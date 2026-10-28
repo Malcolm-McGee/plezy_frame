@@ -866,6 +866,7 @@ extension _VideoPlayerOpenMethods on VideoPlayerScreenState {
     if (!shouldContinue()) return const _MediaOpenResult(didOpen: false);
 
     final media = Media(videoUrl, start: timing.mediaStart, headers: headers);
+    _lastOpenedMedia = media;
     final sidecarOpenGuard = MpvSidecarOpenGuard.armIfNeeded(outcome: outcome, subtitles: externalSubtitlesAtOpen);
     // Both call sites check [shouldContinue] on the statement before, with no
     // await in between, so this closure does not re-check: a staleness signal

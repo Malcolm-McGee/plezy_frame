@@ -6,14 +6,16 @@
 #include "environment.h"
 #include "screen_geometry.h"
 #include "stereo_layout.h"
+#include "xr_math.h"
+#include "xr_protocol.h"
 
 static int g_failures = 0;
-#define CHECK(cond)                                                      \
-  do {                                                                   \
-    if (!(cond)) {                                                       \
+#define CHECK(cond)                                                        \
+  do {                                                                     \
+    if (!(cond)) {                                                         \
       std::fprintf(stderr, "FAIL %s:%d: %s\n", __FILE__, __LINE__, #cond); \
-      ++g_failures;                                                      \
-    }                                                                    \
+      ++g_failures;                                                        \
+    }                                                                      \
   } while (0)
 static bool Near(float a, float b, float eps = 1e-4f) { return std::fabs(a - b) < eps; }
 
@@ -71,6 +73,46 @@ int main() {
   CHECK(EnvironmentByWireName("lounge").id == EnvironmentId::kLounge);
   CHECK(EnvironmentByWireName("nope").id == EnvironmentId::kCinema);
   CHECK(EnvironmentByWireName("passthrough").passthrough);
+
+  // Maths
+  {
+    Mat4 pose = PoseMatrix(0.f, std::sin(0.3f), 0.f, std::cos(0.3f), 1.f, 2.f, 3.f);
+    Mat4 prod = Multiply(pose, InverseRigid(pose));
+    Mat4 id = Identity();
+    for (int i = 0; i < 16; ++i) CHECK(Near(prod[i], id[i]));
+    Mat4 proj = PerspectiveFromFov(-0.8f, 0.7f, 0.9f, -0.6f, 0.05f, 100.f);
+    Mat4 pinv = Multiply(proj, Inverse(proj));
+    for (int i = 0; i < 16; ++i) CHECK(Near(pinv[i], id[i], 1e-3f));
+    // The centre of the frustum edge at the near plane maps to NDC x = -1.
+    const float nx = std::tan(-0.8f) * 0.05f;
+    const float clip_x = proj[0] * nx + proj[8] * -0.05f;
+    const float clip_w = proj[11] * -0.05f;
+    CHECK(Near(clip_x / clip_w, -1.f, 1e-3f));
+    Mat4 sing{};
+    Mat4 si = Inverse(sing);
+    for (int i = 0; i < 16; ++i) CHECK(si[i] == id[i]);
+    Mat4 ry = RotationY(3.14159265f / 2.f);  // +Z axis rotates onto +X
+    CHECK(Near(ry[8], 1.f) && Near(ry[10], 0.f, 1e-5f));
+  }
+
+  // Protocol
+  {
+    CHECK(ParseCommand("toggle\n").type == CommandType::kToggle);
+    CHECK(ParseCommand("seek 12.5").number == 12.5);
+    CHECK(ParseCommand("seekrel -10").number == -10.0);
+    CHECK(ParseCommand("seek").type == CommandType::kInvalid);
+    CHECK(ParseCommand("seek abc").type == CommandType::kInvalid);
+    CHECK(ParseCommand("seek nan").type == CommandType::kInvalid);
+    CHECK(ParseCommand("volume 250").number == 100.0);
+    CHECK(ParseCommand("volume -5").number == 0.0);
+    CHECK(ParseCommand("env lounge\r\n").text == "lounge");
+    CHECK(ParseCommand("env").type == CommandType::kInvalid);
+    CHECK(ParseCommand("layout topBottomHalf").type == CommandType::kLayout);
+    CHECK(ParseCommand("rm -rf /").type == CommandType::kInvalid);
+    CHECK(ParseCommand("").type == CommandType::kInvalid);
+    CHECK(FormatPosition(1.5, 60, true, "void", "none") == "position 1.500 60.000 1 void none");
+    CHECK(FormatError("a\nb").find('\n') == std::string::npos);
+  }
 
   if (g_failures) return 1;
   std::puts("xr_core_test: all passed");

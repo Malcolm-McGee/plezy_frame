@@ -731,6 +731,51 @@ class Translations$settings$en {
 	/// en: 'Use hardware acceleration when available'
 	String get hardwareDecodingDescription => 'Use hardware acceleration when available';
 
+	/// en: 'VR cinema'
+	String get vrCinema => 'VR cinema';
+
+	/// en: 'VR environment'
+	String get vrEnvironment => 'VR environment';
+
+	/// en: 'Where the screen sits when you watch in a headset such as the Steam Frame'
+	String get vrEnvironmentDescription => 'Where the screen sits when you watch in a headset such as the Steam Frame';
+
+	/// en: 'Void'
+	String get vrEnvironmentVoid => 'Void';
+
+	/// en: 'A black space with only the screen'
+	String get vrEnvironmentVoidDescription => 'A black space with only the screen';
+
+	/// en: 'Cinema'
+	String get vrEnvironmentCinema => 'Cinema';
+
+	/// en: 'A dark theater with a large curved screen'
+	String get vrEnvironmentCinemaDescription => 'A dark theater with a large curved screen';
+
+	/// en: 'Lounge'
+	String get vrEnvironmentLounge => 'Lounge';
+
+	/// en: 'A warm living room with a smaller screen'
+	String get vrEnvironmentLoungeDescription => 'A warm living room with a smaller screen';
+
+	/// en: 'Space'
+	String get vrEnvironmentSpace => 'Space';
+
+	/// en: 'A starfield around a wide curved screen'
+	String get vrEnvironmentSpaceDescription => 'A starfield around a wide curved screen';
+
+	/// en: 'Passthrough'
+	String get vrEnvironmentPassthrough => 'Passthrough';
+
+	/// en: 'Float the screen over your real room (needs headset passthrough)'
+	String get vrEnvironmentPassthroughDescription => 'Float the screen over your real room (needs headset passthrough)';
+
+	/// en: 'Detect 3D movies'
+	String get vrAutoDetect3d => 'Detect 3D movies';
+
+	/// en: 'Show side-by-side and top-bottom 3D files in 3D, using the file's metadata or name'
+	String get vrAutoDetect3dDescription => 'Show side-by-side and top-bottom 3D files in 3D, using the file\'s metadata or name';
+
 	/// en: 'Playback Buffer'
 	String get playbackBuffer => 'Playback Buffer';
 
@@ -2401,6 +2446,21 @@ class Translations$videoControls$en {
 
 	/// en: 'Picture-in-Picture mode'
 	String get pipButton => 'Picture-in-Picture mode';
+
+	/// en: 'Watch in VR cinema'
+	String get vrCinemaButton => 'Watch in VR cinema';
+
+	/// en: 'Watching in VR'
+	String get vrCinemaActiveTitle => 'Watching in VR';
+
+	/// en: 'Playback is running in your headset. Put it on to keep watching, or exit VR to continue here.'
+	String get vrCinemaActiveMessage => 'Playback is running in your headset. Put it on to keep watching, or exit VR to continue here.';
+
+	/// en: 'Exit VR'
+	String get vrCinemaExit => 'Exit VR';
+
+	/// en: 'Could not start the VR cinema: ${message}'
+	String vrCinemaFailed({required Object message}) => 'Could not start the VR cinema: ${message}';
 
 	/// en: 'Aspect ratio'
 	String get aspectRatioButton => 'Aspect ratio';
@@ -8337,6 +8397,21 @@ extension on Translations {
 			'settings.mpv' => 'mpv',
 			'settings.hardwareDecoding' => 'Hardware Decoding',
 			'settings.hardwareDecodingDescription' => 'Use hardware acceleration when available',
+			'settings.vrCinema' => 'VR cinema',
+			'settings.vrEnvironment' => 'VR environment',
+			'settings.vrEnvironmentDescription' => 'Where the screen sits when you watch in a headset such as the Steam Frame',
+			'settings.vrEnvironmentVoid' => 'Void',
+			'settings.vrEnvironmentVoidDescription' => 'A black space with only the screen',
+			'settings.vrEnvironmentCinema' => 'Cinema',
+			'settings.vrEnvironmentCinemaDescription' => 'A dark theater with a large curved screen',
+			'settings.vrEnvironmentLounge' => 'Lounge',
+			'settings.vrEnvironmentLoungeDescription' => 'A warm living room with a smaller screen',
+			'settings.vrEnvironmentSpace' => 'Space',
+			'settings.vrEnvironmentSpaceDescription' => 'A starfield around a wide curved screen',
+			'settings.vrEnvironmentPassthrough' => 'Passthrough',
+			'settings.vrEnvironmentPassthroughDescription' => 'Float the screen over your real room (needs headset passthrough)',
+			'settings.vrAutoDetect3d' => 'Detect 3D movies',
+			'settings.vrAutoDetect3dDescription' => 'Show side-by-side and top-bottom 3D files in 3D, using the file\'s metadata or name',
 			'settings.playbackBuffer' => 'Playback Buffer',
 			'settings.playbackBufferAuto' => 'Auto (Recommended)',
 			'settings.playbackBufferLarge' => 'Large',
@@ -8595,6 +8670,8 @@ extension on Translations {
 			'themeEditor.presets' => 'Presets',
 			'themeEditor.custom' => 'Custom',
 			'themeEditor.customEmpty' => 'Not created yet',
+			_ => null,
+		} ?? switch (path) {
 			'themeEditor.editCustom' => 'Edit custom theme',
 			'themeEditor.editCustomDescription' => 'Choose every color yourself',
 			'themeEditor.locked' => 'Unlock with Supporter',
@@ -8610,8 +8687,6 @@ extension on Translations {
 			'themeEditor.slots.text' => 'Text',
 			'themeEditor.slots.textMuted' => 'Secondary text',
 			'themeEditor.slots.accent' => 'Accent',
-			_ => null,
-		} ?? switch (path) {
 			'themeEditor.opacity' => 'Opacity',
 			'themeEditor.hexHint' => '#RRGGBB or #AARRGGBB',
 			'themeEditor.fromOtherThemes' => 'From other themes',
@@ -8899,6 +8974,11 @@ extension on Translations {
 			'videoControls.transcodeUnavailableFallback' => 'Transcoding unavailable — playing original quality',
 			'videoControls.subtitleUnavailableFallback' => 'Selected subtitles could not be loaded — continuing without subtitles',
 			'videoControls.pipButton' => 'Picture-in-Picture mode',
+			'videoControls.vrCinemaButton' => 'Watch in VR cinema',
+			'videoControls.vrCinemaActiveTitle' => 'Watching in VR',
+			'videoControls.vrCinemaActiveMessage' => 'Playback is running in your headset. Put it on to keep watching, or exit VR to continue here.',
+			'videoControls.vrCinemaExit' => 'Exit VR',
+			'videoControls.vrCinemaFailed' => ({required Object message}) => 'Could not start the VR cinema: ${message}',
 			'videoControls.aspectRatioButton' => 'Aspect ratio',
 			'videoControls.ambientLighting' => 'Ambient lighting',
 			'videoControls.fullscreenButton' => 'Enter fullscreen',
@@ -9104,6 +9184,8 @@ extension on Translations {
 			'profiles.removeConnection' => 'Remove',
 			'profiles.profileRenamed' => 'Profile renamed.',
 			'profiles.borrowAddTo' => ({required Object displayName}) => 'Add to ${displayName}',
+			_ => null,
+		} ?? switch (path) {
 			'profiles.borrowExplain' => 'Borrow another profile\'s connection. PIN-protected profiles require a PIN.',
 			'profiles.borrowEmpty' => 'Nothing to borrow yet.',
 			'profiles.borrowEmptySubtitle' => 'Connect Plex, Jellyfin, or Emby to another profile first.',
@@ -9124,8 +9206,6 @@ extension on Translations {
 			'profiles.pinsDontMatch' => 'PINs don\'t match',
 			'profiles.tokenIdentityMismatch' => 'The Plex profile token resolved to an unexpected server',
 			'connections.sectionTitle' => 'Connections',
-			_ => null,
-		} ?? switch (path) {
 			'connections.addConnection' => 'Add connection',
 			'connections.addConnectionSubtitleNoProfile' => 'Sign in with Plex or connect a Jellyfin or Emby server',
 			'connections.addConnectionSubtitleScoped' => ({required Object displayName}) => 'Add to ${displayName}: Plex, Jellyfin, Emby, or another profile connection',
@@ -9618,6 +9698,8 @@ extension on Translations {
 			'liveTv.dvrAdminRequired' => 'DVR settings require an admin account',
 			'liveTv.recordingFailed' => 'Couldn\'t schedule recording',
 			'liveTv.recordingTargetMissing' => 'Couldn\'t determine recording library',
+			_ => null,
+		} ?? switch (path) {
 			'liveTv.recordNotAvailable' => 'Recording not available for this program',
 			'liveTv.recordingCancelled' => 'Recording canceled',
 			'liveTv.recordingRuleDeleted' => 'Recording rule deleted',
@@ -9638,8 +9720,6 @@ extension on Translations {
 			'liveTv.recordSettings.anyChannel' => 'Record on any channel',
 			'liveTv.recordSettings.anyTime' => 'Record at any time',
 			'liveTv.recordSettings.skipInLibrary' => 'Skip episodes already in the library',
-			_ => null,
-		} ?? switch (path) {
 			'liveTv.recordSettings.keepUpTo' => 'Episodes to keep',
 			'liveTv.recordSettings.keepUpToHint' => '0 keeps every episode',
 			'liveTv.startingInMinutes' => ({required Object minutes}) => 'Starting in ${minutes} min',
@@ -10132,6 +10212,8 @@ extension on Translations {
 			'performanceOverlay.renderFps' => 'Render FPS',
 			'performanceOverlay.displayFps' => 'Display FPS',
 			'performanceOverlay.avSync' => 'A/V Sync',
+			_ => null,
+		} ?? switch (path) {
 			'performanceOverlay.dropped' => 'Dropped',
 			'performanceOverlay.dvRpus' => 'DV RPUs',
 			'performanceOverlay.dvRpuAverage' => 'DV RPU Avg',
@@ -10152,8 +10234,6 @@ extension on Translations {
 			'performanceOverlay.decoderNvidiaHw' => 'NVIDIA HW',
 			'performanceOverlay.decoderQualcommHw' => 'Qualcomm HW',
 			'performanceOverlay.decoderMediatekHw' => 'MediaTek HW',
-			_ => null,
-		} ?? switch (path) {
 			'performanceOverlay.decoderExynosHw' => 'Exynos HW',
 			'performanceOverlay.decoderSoftware' => 'Software',
 			'performanceOverlay.decoderHardware' => 'Hardware',

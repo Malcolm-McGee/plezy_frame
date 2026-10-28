@@ -211,11 +211,11 @@ if(PLEZY_BUILD_MPV_RELIABILITY_TESTS)
   # Steam Frame / OpenXR geometry (stereo eye rects, curved screen, environments).
   # Pure headers, so no OpenXR or display is needed.
   add_executable(xr_core_test
-    "xr/xr_core_test.cc"
+    "../xr/xr_core_test.cc"
   )
   apply_standard_settings(xr_core_test)
   target_compile_features(xr_core_test PRIVATE cxx_std_17)
-  target_include_directories(xr_core_test PRIVATE "xr")
+  target_include_directories(xr_core_test PRIVATE "../xr")
   apply_mpv_reliability_sanitizer(xr_core_test)
   add_test(NAME xr_core_test COMMAND xr_core_test)
 

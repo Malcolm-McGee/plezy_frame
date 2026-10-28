@@ -283,6 +283,21 @@ class TrackChapterControls extends StatelessWidget {
           buttonIndex++;
         }
 
+        if (state.onEnterVrCinema != null) {
+          final currentIndex = buttonIndex;
+          buttons.add(
+            _buildTrackButton(
+              buttonIndex: currentIndex,
+              icon: Symbols.view_in_ar_rounded,
+              tooltip: t.videoControls.vrCinemaButton,
+              semanticLabel: t.videoControls.vrCinemaButton,
+              buttons: buttons,
+              onPressed: state.onEnterVrCinema,
+            ),
+          );
+          buttonIndex++;
+        }
+
         // BoxFit mode button
         if (state.onCycleBoxFitMode != null) {
           final currentIndex = buttonIndex;

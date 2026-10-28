@@ -4,38 +4,14 @@ import 'package:plezy/media/stereo_3d.dart';
 void main() {
   group('detectStereo3dFromName', () {
     test('reads delimited packing tokens', () {
-      expect(
-        detectStereo3dFromName('Avatar.2009.3D.HSBS.1080p.mkv'),
-        Stereo3dLayout.sideBySideHalf,
-      );
-      expect(
-        detectStereo3dFromName('Avatar (2009) [Half-SBS]'),
-        Stereo3dLayout.sideBySideHalf,
-      );
-      expect(
-        detectStereo3dFromName('Avatar.2009.3D.FSBS.mkv'),
-        Stereo3dLayout.sideBySideFull,
-      );
-      expect(
-        detectStereo3dFromName('Avatar 3D Full SBS'),
-        Stereo3dLayout.sideBySideFull,
-      );
-      expect(
-        detectStereo3dFromName('Movie.3D.H-OU.mkv'),
-        Stereo3dLayout.topBottomHalf,
-      );
-      expect(
-        detectStereo3dFromName('Movie.3D.HTAB.mkv'),
-        Stereo3dLayout.topBottomHalf,
-      );
-      expect(
-        detectStereo3dFromName('Movie.3D.FTAB.mkv'),
-        Stereo3dLayout.topBottomFull,
-      );
-      expect(
-        detectStereo3dFromName('Movie Over Under'),
-        Stereo3dLayout.topBottomHalf,
-      );
+      expect(detectStereo3dFromName('Avatar.2009.3D.HSBS.1080p.mkv'), Stereo3dLayout.sideBySideHalf);
+      expect(detectStereo3dFromName('Avatar (2009) [Half-SBS]'), Stereo3dLayout.sideBySideHalf);
+      expect(detectStereo3dFromName('Avatar.2009.3D.FSBS.mkv'), Stereo3dLayout.sideBySideFull);
+      expect(detectStereo3dFromName('Avatar 3D Full SBS'), Stereo3dLayout.sideBySideFull);
+      expect(detectStereo3dFromName('Movie.3D.H-OU.mkv'), Stereo3dLayout.topBottomHalf);
+      expect(detectStereo3dFromName('Movie.3D.HTAB.mkv'), Stereo3dLayout.topBottomHalf);
+      expect(detectStereo3dFromName('Movie.3D.FTAB.mkv'), Stereo3dLayout.topBottomFull);
+      expect(detectStereo3dFromName('Movie Over Under'), Stereo3dLayout.topBottomHalf);
     });
     test('ignores look-alikes and bare 3D', () {
       expect(detectStereo3dFromName('Absbsb.mkv'), Stereo3dLayout.none);
@@ -47,27 +23,12 @@ void main() {
   });
 
   group('stereo3dFromContainer', () {
-    test(
-      'maps Matroska values and picks full vs half from the frame shape',
-      () {
-        expect(
-          stereo3dFromContainer(1, frameWidth: 1920, frameHeight: 1080).layout,
-          Stereo3dLayout.sideBySideHalf,
-        );
-        expect(
-          stereo3dFromContainer(1, frameWidth: 3840, frameHeight: 1080).layout,
-          Stereo3dLayout.sideBySideFull,
-        );
-        expect(
-          stereo3dFromContainer(3, frameWidth: 1920, frameHeight: 1080).layout,
-          Stereo3dLayout.topBottomHalf,
-        );
-        expect(
-          stereo3dFromContainer(3, frameWidth: 1920, frameHeight: 2160).layout,
-          Stereo3dLayout.topBottomFull,
-        );
-      },
-    );
+    test('maps Matroska values and picks full vs half from the frame shape', () {
+      expect(stereo3dFromContainer(1, frameWidth: 1920, frameHeight: 1080).layout, Stereo3dLayout.sideBySideHalf);
+      expect(stereo3dFromContainer(1, frameWidth: 3840, frameHeight: 1080).layout, Stereo3dLayout.sideBySideFull);
+      expect(stereo3dFromContainer(3, frameWidth: 1920, frameHeight: 1080).layout, Stereo3dLayout.topBottomHalf);
+      expect(stereo3dFromContainer(3, frameWidth: 1920, frameHeight: 2160).layout, Stereo3dLayout.topBottomFull);
+    });
     test('flags right-eye-first packings', () {
       expect(stereo3dFromContainer(11).swapEyes, isTrue);
       expect(stereo3dFromContainer(2).swapEyes, isTrue);
@@ -80,13 +41,18 @@ void main() {
     });
   });
 
+  test('stereo3dFromMpvStereoIn maps mpv values', () {
+    expect(stereo3dFromMpvStereoIn('sbs2l', frameWidth: 1920, frameHeight: 1080).layout, Stereo3dLayout.sideBySideHalf);
+    expect(stereo3dFromMpvStereoIn('sbs2r', frameWidth: 3840, frameHeight: 1080).swapEyes, isTrue);
+    expect(stereo3dFromMpvStereoIn('ab2l', frameWidth: 1920, frameHeight: 1080).layout, Stereo3dLayout.topBottomHalf);
+    expect(stereo3dFromMpvStereoIn('mono').isStereo, isFalse);
+    expect(stereo3dFromMpvStereoIn(null).isStereo, isFalse);
+  });
+
   test('resolveStereo3d prefers override, then container, then name', () {
     const sbs = Stereo3dInfo(Stereo3dLayout.sideBySideHalf);
     const tab = Stereo3dInfo(Stereo3dLayout.topBottomHalf);
-    expect(
-      resolveStereo3d(userOverride: tab, container: sbs, name: 'x.FSBS'),
-      tab,
-    );
+    expect(resolveStereo3d(userOverride: tab, container: sbs, name: 'x.FSBS'), tab);
     expect(resolveStereo3d(container: sbs, name: 'x.H-OU'), sbs);
     expect(resolveStereo3d(name: 'x.H-OU'), tab);
     expect(resolveStereo3d(name: 'x'), const Stereo3dInfo(Stereo3dLayout.none));

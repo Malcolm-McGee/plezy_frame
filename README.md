@@ -198,6 +198,16 @@ sudo moss pad plezy
 [^shelf]: Android TV / Fire TV and tvOS.
 [^links]: Android, iOS, macOS, and tvOS.
 
+## Steam Frame and VR (OpenXR)
+
+On Linux, Plezy can play in a virtual cinema on a Steam Frame or any other OpenXR headset. Open a title, then press the **Watch in VR cinema** button in the player controls. The headset opens a curved screen in the environment chosen under *Settings → Video playback → VR cinema*; the desktop window shows a "Watching in VR" box until you take the headset off or choose **Exit VR**, and flat playback resumes where you left off.
+
+- **Environments:** Void, Cinema, Lounge, Space, and Passthrough (the screen floats over your real room; needs a runtime that offers alpha-blend or additive passthrough).
+- **3D movies:** side-by-side and top-bottom, half and full width. The packing is read from the file's container metadata (mpv `stereo-in`), then from tags in the file name (`HSBS`, `FSBS`, `H-OU`, `FTAB`, ...). Turn **Detect 3D movies** off to play everything flat.
+- **Controller bindings:** trigger = play/pause, right stick left/right = seek 10 s, right stick up/down = volume, `B` = next environment, `A` = next 3D mode (flat, SBS half/full, top-bottom half/full), left stick click = recenter, left menu = exit. Bindings are suggested for the Khronos simple, Oculus Touch and Valve Index profiles and can be rebound in SteamVR.
+
+The VR player is a separate executable, `plezy-xr` (`linux/xr/`), built when the OpenXR development files are installed (`libopenxr-dev` and `libgles-dev` on Debian/Ubuntu); without them the build skips it and the button stays hidden. It needs a runtime that exposes `XR_KHR_opengl_es_enable` and `XR_MNDX_egl_enable` (Monado does; SteamVR's Linux runtime support for these varies, so check the helper's error message if VR fails to start). Run it by hand with `plezy-xr --url <stream> [--env cinema] [--layout sideBySideHalf]`, and set `PLEZY_XR_BIN` to point the app at a helper outside the bundle.
+
 ## plezy:// links
 
 Links start Plezy from outside the app. Any link may add `profile=<profile>`: a profile id, a Plex Home user UUID, or a display name (ignoring case; it must match one profile). Plezy switches to that profile first, and a protected profile still asks for its PIN. A link replaces whatever is playing.

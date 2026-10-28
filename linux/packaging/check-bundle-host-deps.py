@@ -147,7 +147,7 @@ def host_libraries(bundle: Path) -> tuple[dict[str, str], list[str]]:
     # rglob for the objects to inspect, though: those same modules pull in host
     # libraries nothing else in the bundle links, and scanning only lib/*.so*
     # left their dependencies out of ldd entirely.
-    binaries = [bundle / "plezy", *sorted(bundle.rglob("*.so*"))]
+    binaries = [bundle / "plezy", *([bundle / "plezy-xr"] if (bundle / "plezy-xr").exists() else []), *sorted(bundle.rglob("*.so*"))]
     needed: dict[str, str] = {}
     problems: list[str] = []
     for binary in binaries:

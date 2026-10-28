@@ -12,6 +12,7 @@ import '../../utils/audio_channel_limit_labels.dart';
 import '../../utils/quality_preset_labels.dart';
 import '../../services/settings_service.dart';
 import '../../services/video_decode_capabilities.dart';
+import '../../services/xr_cinema_service.dart';
 import '../../utils/codec_utils.dart';
 import '../../utils/platform_detector.dart';
 import '../../widgets/setting_tile.dart';
@@ -78,6 +79,11 @@ class PlaybackSettingsScreen extends StatelessWidget {
                 if (PlatformDetector.supportsPictureInPicture()) _autoPipTile(),
               ],
             ),
+
+            // Shown only where the plezy-xr helper is installed (Linux builds
+            // with OpenXR, e.g. Steam Frame).
+            if (XrCinemaService.isSupported)
+              SettingsGroup(title: t.settings.vrCinema, children: [_vrEnvironmentTile(), _vrAutoDetect3dTile()]),
 
             SettingsGroup(
               title: t.settings.videoAndDisplay,
@@ -445,6 +451,55 @@ class PlaybackSettingsScreen extends StatelessWidget {
         destinationBuilder: (_) => const ExternalPlayerScreen(),
       );
     },
+  );
+
+  Widget _vrAutoDetect3dTile() => SettingSwitchTile(
+    pref: SettingsService.vrAutoDetect3d,
+    icon: Symbols.view_in_ar_rounded,
+    title: t.settings.vrAutoDetect3d,
+    subtitle: t.settings.vrAutoDetect3dDescription,
+  );
+
+  String _vrEnvironmentLabel(VrEnvironment environment) => switch (environment) {
+    VrEnvironment.void_ => t.settings.vrEnvironmentVoid,
+    VrEnvironment.cinema => t.settings.vrEnvironmentCinema,
+    VrEnvironment.lounge => t.settings.vrEnvironmentLounge,
+    VrEnvironment.space => t.settings.vrEnvironmentSpace,
+    VrEnvironment.passthrough => t.settings.vrEnvironmentPassthrough,
+  };
+
+  Widget _vrEnvironmentTile() => SettingSelectionTile<VrEnvironment>(
+    pref: SettingsService.vrEnvironment,
+    icon: Symbols.panorama_photosphere_rounded,
+    title: t.settings.vrEnvironment,
+    subtitleBuilder: (environment) => '${_vrEnvironmentLabel(environment)} · ${t.settings.vrEnvironmentDescription}',
+    options: [
+      DialogOption(
+        value: VrEnvironment.void_,
+        title: t.settings.vrEnvironmentVoid,
+        subtitle: t.settings.vrEnvironmentVoidDescription,
+      ),
+      DialogOption(
+        value: VrEnvironment.cinema,
+        title: t.settings.vrEnvironmentCinema,
+        subtitle: t.settings.vrEnvironmentCinemaDescription,
+      ),
+      DialogOption(
+        value: VrEnvironment.lounge,
+        title: t.settings.vrEnvironmentLounge,
+        subtitle: t.settings.vrEnvironmentLoungeDescription,
+      ),
+      DialogOption(
+        value: VrEnvironment.space,
+        title: t.settings.vrEnvironmentSpace,
+        subtitle: t.settings.vrEnvironmentSpaceDescription,
+      ),
+      DialogOption(
+        value: VrEnvironment.passthrough,
+        title: t.settings.vrEnvironmentPassthrough,
+        subtitle: t.settings.vrEnvironmentPassthroughDescription,
+      ),
+    ],
   );
 
   Widget _hardwareDecodingTile() => SettingSwitchTile(

@@ -162,6 +162,16 @@ enum SubtitleRenderResolution { screen, video, threeQuarter, half, third, quarte
 /// default and leaves the compositor an identity transform.
 enum HdrToneMapping { compositor, player }
 
+/// Where the VR cinema (Steam Frame and other OpenXR headsets) puts the screen.
+/// Value names are the persisted ids and the wire names the `plezy-xr` helper
+/// understands (`linux/xr/environment.h`).
+enum VrEnvironment { void_, cinema, lounge, space, passthrough }
+
+extension VrEnvironmentWire on VrEnvironment {
+  /// The id the native helper knows this environment by.
+  String get wireName => this == VrEnvironment.void_ ? 'void' : name;
+}
+
 extension SubtitleRenderScale on SubtitleRenderResolution {
   /// Android libass overlay render scale (fraction of the surface resolution).
   /// Only Android reads this; the Apple-only [video] basis maps to full scale here.
@@ -645,6 +655,17 @@ class SettingsService extends BaseSharedPreferencesService {
     values: HdrToneMapping.values,
     defaultValue: HdrToneMapping.compositor,
   );
+
+  /// Environment the VR cinema opens in.
+  static const vrEnvironment = EnumPref<VrEnvironment>(
+    'vr_environment',
+    values: VrEnvironment.values,
+    defaultValue: VrEnvironment.cinema,
+  );
+
+  /// Pick the 3D packing from container metadata and the file name when the VR
+  /// cinema opens a title. Off plays everything flat until chosen in VR.
+  static const vrAutoDetect3d = BoolPref('vr_auto_detect_3d', defaultValue: true);
   static const viewMode = EnumPref<ViewMode>('view_mode', values: ViewMode.values, defaultValue: ViewMode.grid);
   static const seekTimeSmall = IntPref('seek_time_small', defaultValue: 10);
   static const seekTimeLarge = IntPref('seek_time_large', defaultValue: 30);
@@ -1475,6 +1496,8 @@ class SettingsService extends BaseSharedPreferencesService {
     enableHardwareDecoding,
     enableHDR,
     hdrToneMapping,
+    vrEnvironment,
+    vrAutoDetect3d,
     viewMode,
     seekTimeSmall,
     seekTimeLarge,

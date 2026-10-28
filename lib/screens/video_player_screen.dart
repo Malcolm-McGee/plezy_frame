@@ -81,6 +81,8 @@ import '../services/ambient_lighting_service.dart';
 import '../services/video_filter_manager.dart';
 import '../services/video_volume_controller.dart';
 import '../services/pip_service.dart';
+import '../services/xr_cinema_service.dart';
+import '../media/stereo_3d.dart';
 import '../services/shader_service.dart';
 import '../providers/shader_provider.dart';
 import '../providers/account_preferences_controller.dart';
@@ -150,6 +152,7 @@ part 'video_player/parts/playback_services.dart';
 part 'video_player/parts/playback_start.dart';
 part 'video_player/parts/seeking.dart';
 part 'video_player/parts/build.dart';
+part 'video_player/parts/vr_cinema.dart';
 part 'video_player/parts/watch_together.dart';
 
 final WakelockController _wakelockController = WakelockController();
@@ -981,6 +984,12 @@ class VideoPlayerScreenState extends State<VideoPlayerScreen>
   PlaybackProgressTracker? _progressTracker;
   VideoFilterManager? _videoFilterManager;
   bool _pipInitialized = false;
+
+  /// The stream most recently opened on [player], kept so the VR cinema can reopen it.
+  Media? _lastOpenedMedia;
+
+  /// The running VR cinema helper, if any.
+  XrCinemaSession? _vrSession;
   ShaderService? _shaderService;
   AmbientLightingService? _ambientLightingService;
 
@@ -2398,6 +2407,7 @@ class VideoPlayerScreenState extends State<VideoPlayerScreen>
 
   @override
   void dispose() {
+    unawaited(_stopVrCinemaOnDispose());
     PlaybackCoordinator.instance.unregisterVideoSession(
       _shutdownVideo,
       retirement: () async {

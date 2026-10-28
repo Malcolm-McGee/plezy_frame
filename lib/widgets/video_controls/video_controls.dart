@@ -582,6 +582,9 @@ class PlexVideoControls extends StatefulWidget {
   final int boxFitMode;
   final double videoZoomScale;
   final VoidCallback? onTogglePIPMode;
+
+  /// Opens the VR cinema (Steam Frame and other OpenXR headsets). Null hides the button.
+  final VoidCallback? onEnterVrCinema;
   final VoidCallback? onCycleBoxFitMode;
   final ValueChanged<double>? onVideoZoomChanged;
   final VoidCallback? onZoomIn;
@@ -724,6 +727,7 @@ class PlexVideoControls extends StatefulWidget {
     this.boxFitMode = 0,
     this.videoZoomScale = 1.0,
     this.onTogglePIPMode,
+    this.onEnterVrCinema,
     this.onCycleBoxFitMode,
     this.onVideoZoomChanged,
     this.onZoomIn,

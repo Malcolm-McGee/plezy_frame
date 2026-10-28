@@ -81,6 +81,20 @@ pkg_check_modules(GTK REQUIRED IMPORTED_TARGET gtk+-3.0)
 # Application build; see runner/CMakeLists.txt.
 add_subdirectory("runner")
 
+# VR cinema helper for Steam Frame and other OpenXR headsets. Optional: it needs
+# the OpenXR loader headers, and the app works without it (the VR button just
+# stays hidden when the helper is not installed next to the executable).
+option(PLEZY_BUILD_XR "Build the plezy-xr OpenXR cinema helper when OpenXR is available" ON)
+if(PLEZY_BUILD_XR)
+  pkg_check_modules(OPENXR_PROBE openxr)
+  if(OPENXR_PROBE_FOUND)
+    add_subdirectory("xr")
+    set(PLEZY_XR_BUILT TRUE)
+  else()
+    message(STATUS "OpenXR not found; skipping the plezy-xr VR cinema helper")
+  endif()
+endif()
+
 # Run the Flutter tool portions of the build. This must not be removed.
 add_dependencies(${BINARY_NAME} flutter_assemble)
 
@@ -117,6 +131,11 @@ set(INSTALL_BUNDLE_LIB_DIR "${CMAKE_INSTALL_PREFIX}/lib")
 
 install(TARGETS ${BINARY_NAME} RUNTIME DESTINATION "${CMAKE_INSTALL_PREFIX}"
   COMPONENT Runtime)
+
+if(PLEZY_XR_BUILT)
+  install(TARGETS plezy-xr RUNTIME DESTINATION "${CMAKE_INSTALL_PREFIX}"
+    COMPONENT Runtime)
+endif()
 
 install(FILES "${FLUTTER_ICU_DATA_FILE}" DESTINATION "${INSTALL_BUNDLE_DATA_DIR}"
   COMPONENT Runtime)

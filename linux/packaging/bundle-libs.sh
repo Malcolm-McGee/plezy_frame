@@ -56,7 +56,10 @@ bundle_dlopen_lib() {
 echo "==> Discovering shared library dependencies..."
 
 # Seed: the main binary + all .so files already in lib/
-mapfile -t seed_files < <(find "$LIB_DIR" -name '*.so*' -type f 2>/dev/null; echo "$BINARY")
+# plezy-xr (the OpenXR VR cinema helper) is optional and ships beside the main
+# binary, so its deps (libopenxr_loader) are bundled when it is present.
+XR_BINARY="$BUNDLE_DIR/plezy-xr"
+mapfile -t seed_files < <(find "$LIB_DIR" -name '*.so*' -type f 2>/dev/null; echo "$BINARY"; [[ -f "$XR_BINARY" ]] && echo "$XR_BINARY")
 
 # Iteratively resolve until no new deps appear
 declare -A seen

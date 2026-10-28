@@ -219,7 +219,7 @@ class DesktopVideoControlsState extends State<DesktopVideoControls> {
     _volumeFocusNode = FocusNode(debugLabel: 'Volume');
 
     // Create focus nodes for track controls (up to 8 buttons)
-    _trackControlFocusNodes = List.generate(8, (i) => FocusNode(debugLabel: 'TrackControl$i'));
+    _trackControlFocusNodes = List.generate(9, (i) => FocusNode(debugLabel: 'TrackControl$i'));
 
     _buttonFocusNodes = [
       _prevItemFocusNode,
