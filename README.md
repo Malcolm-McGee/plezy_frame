@@ -208,6 +208,44 @@ On Linux, Plezy can play in a virtual cinema on a Steam Frame or any other OpenX
 
 The VR player is a separate executable, `plezy-xr` (`linux/xr/`), built when the OpenXR development files are installed (`libopenxr-dev` and `libgles-dev` on Debian/Ubuntu); without them the build skips it and the button stays hidden. It needs a runtime that exposes `XR_KHR_opengl_es_enable` and `XR_MNDX_egl_enable` (Monado does; SteamVR's Linux runtime support for these varies, so check the helper's error message if VR fails to start). Run it by hand with `plezy-xr --url <stream> [--env cinema] [--layout sideBySideHalf]`, and set `PLEZY_XR_BIN` to point the app at a helper outside the bundle.
 
+### Installing on a Steam Frame
+
+There is no prebuilt download with the VR cinema yet: the release packages above do not include `plezy-xr`, so for now you build Plezy yourself. Nothing below has been run on a real Steam Frame; it is the same Linux arm64 build the project already ships, plus the VR helper.
+
+1. **Get a shell with build tools on arm64 Linux.** Either the Frame in desktop mode, or any other arm64 Linux machine (then copy the finished folder across, step 5). SteamOS keeps its root filesystem read-only, so the simplest route is a container such as [Distrobox](https://distrobox.it) with Ubuntu 24.04 rather than changing the system.
+2. **Install the build dependencies** (Debian/Ubuntu names, from the project's CI):
+
+   ```bash
+   sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev \
+     libstdc++-12-dev libepoxy-dev libcurl4-openssl-dev libevdev-dev libwayland-dev libegl-dev \
+     libopenxr-dev libgles-dev python3 git
+   ```
+
+   Install the [Flutter SDK](https://docs.flutter.dev/get-started/install/linux) (3.47.0 or newer) too. `libopenxr-dev` and `libgles-dev` are what make the build include the VR helper.
+3. **Build:**
+
+   ```bash
+   git clone -b steam-frame-xr-foundation https://github.com/Malcolm-McGee/plezy_frame.git
+   cd plezy_frame
+   python3 scripts/fetch_linux_libmpv.py --dest libmpv-prefix
+   export PKG_CONFIG_PATH="$PWD/libmpv-prefix/lib/pkgconfig:$PWD/libmpv-prefix/lib/aarch64-linux-gnu/pkgconfig"
+   flutter pub get && scripts/codegen.sh
+   flutter build linux --release
+   ```
+
+4. **Bundle the libraries** so the folder runs on its own (this also picks up the OpenXR loader):
+
+   ```bash
+   BUNDLE=build/linux/arm64/release/bundle
+   ls "$BUNDLE/plezy" "$BUNDLE/plezy-xr"     # both must exist
+   bash linux/packaging/bundle-libs.sh "$BUNDLE"
+   cp linux/packaging/plezy.sh "$BUNDLE/plezy.sh"   # launcher that points at the bundled libraries
+   ```
+
+   If `plezy-xr` is missing, the OpenXR packages from step 2 were not found at configure time; install them and rebuild.
+5. **Run it.** Copy the `bundle` folder wherever you like (for example `~/plezy`) and start `~/plezy/plezy.sh`. To make it appear in the Steam library, use *Add a Non-Steam Game* and pick that file.
+6. **Make sure a headset runtime is active.** Start SteamVR (or another OpenXR runtime) with the Frame connected before pressing the VR button. If the button does nothing useful, run `~/plezy/plezy-xr --url <any video URL>` in a terminal: it prints why it could not start, such as no runtime or a missing OpenGL ES extension.
+
 ## plezy:// links
 
 Links start Plezy from outside the app. Any link may add `profile=<profile>`: a profile id, a Plex Home user UUID, or a display name (ignoring case; it must match one profile). Plezy switches to that profile first, and a protected profile still asks for its PIN. A link replaces whatever is playing.
