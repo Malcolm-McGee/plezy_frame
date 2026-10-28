@@ -208,6 +208,17 @@ if(PLEZY_BUILD_MPV_RELIABILITY_TESTS)
   apply_mpv_reliability_sanitizer(plane_geometry_test)
   add_test(NAME plane_geometry_test COMMAND plane_geometry_test)
 
+  # Steam Frame / OpenXR geometry (stereo eye rects, curved screen, environments).
+  # Pure headers, so no OpenXR or display is needed.
+  add_executable(xr_core_test
+    "xr/xr_core_test.cc"
+  )
+  apply_standard_settings(xr_core_test)
+  target_compile_features(xr_core_test PRIVATE cxx_std_17)
+  target_include_directories(xr_core_test PRIVATE "xr")
+  apply_mpv_reliability_sanitizer(xr_core_test)
+  add_test(NAME xr_core_test COMMAND xr_core_test)
+
   # Unlike the other two pure headers, this one parses libmpv's own node type,
   # so it needs mpv's headers - and nothing else: the parse links no symbol.
   add_executable(video_params_test
