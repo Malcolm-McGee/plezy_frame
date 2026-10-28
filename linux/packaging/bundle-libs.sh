@@ -129,7 +129,8 @@ if compgen -G "$LIB_DIR/libgio-2.0.so*" > /dev/null; then
     GIO_HELPER=""
     for candidate in "${GLIB_LIBDIR:+$GLIB_LIBDIR/glib-2.0/gio-launch-desktop}" \
         /usr/libexec/gio-launch-desktop \
-        /usr/lib/glib-2.0/gio-launch-desktop; do
+        /usr/lib/glib-2.0/gio-launch-desktop \
+        /usr/lib/gio-launch-desktop; do  # the last is where Arch/SteamOS keeps it
         if [[ -n "$candidate" && -x "$candidate" ]]; then
             GIO_HELPER="$candidate"
             break

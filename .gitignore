@@ -75,3 +75,7 @@ maestro/**/*.png
 
 server/deploy.sh
 server/Caddyfile
+
+# Downloaded by scripts/steamos_deps.py
+/libmpv-prefix/
+/jdk/

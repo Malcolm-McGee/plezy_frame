@@ -7,41 +7,35 @@ A VR cinema for [Plezy](https://github.com/edde746/plezy), the Plex, Jellyfin an
 
 ## Install on a Steam Frame
 
-There is no prebuilt download with the VR cinema yet: the release packages above do not include `plezy-xr`, so for now you build Plezy yourself. Nothing below has been run on a real Steam Frame; it is the same Linux arm64 build the project already ships, plus the VR helper.
+There is no prebuilt download yet, so you build it on the Frame itself. It needs no root access and does not change SteamOS: everything lands in your home folder. Allow roughly half an hour the first time.
 
-1. **Get a shell with build tools on arm64 Linux.** Either the Frame in desktop mode, or any other arm64 Linux machine (then copy the finished folder across, step 5). SteamOS keeps its root filesystem read-only, so the simplest route is a container such as [Distrobox](https://distrobox.it) with Ubuntu 24.04 rather than changing the system.
-2. **Install the build dependencies** (Debian/Ubuntu names, from the project's CI):
+Before you start: switch to **Desktop Mode** and make sure **SteamVR** is installed (it provides the OpenXR runtime). Open a terminal (Konsole) and run these three commands, one at a time.
 
-   ```bash
-   sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev \
-     libstdc++-12-dev libepoxy-dev libcurl4-openssl-dev libevdev-dev libwayland-dev libegl-dev \
-     libopenxr-dev libgles-dev python3 git
-   ```
+**1. Get Plezy**
+```
+git clone -b steam-frame-xr-foundation https://github.com/Malcolm-McGee/plezy_frame
+```
 
-   Install the [Flutter SDK](https://docs.flutter.dev/get-started/install/linux) (3.47.0 or newer) too. `libopenxr-dev` and `libgles-dev` are what make the build include the VR helper.
-3. **Build:**
+**2. Get Flutter** (the toolkit Plezy is built with)
+```
+git clone --depth 1 -b stable https://github.com/flutter/flutter.git ~/flutter
+```
 
-   ```bash
-   git clone -b steam-frame-xr-foundation https://github.com/Malcolm-McGee/plezy_frame.git
-   cd plezy_frame
-   python3 scripts/fetch_linux_libmpv.py --dest libmpv-prefix
-   export PKG_CONFIG_PATH="$PWD/libmpv-prefix/lib/pkgconfig:$PWD/libmpv-prefix/lib/aarch64-linux-gnu/pkgconfig"
-   flutter pub get && scripts/codegen.sh
-   flutter build linux --release
-   ```
+**3. Build and install**
+```
+cd plezy_frame && ./scripts/steamos_build.sh
+```
 
-4. **Bundle the libraries** so the folder runs on its own (this also picks up the OpenXR loader):
+The script downloads what SteamOS lacks (libmpv, two small libraries it needs, and a JDK that one Flutter package requires to configure the build), builds the app and the VR helper, and installs them to `~/plezy`. The first Flutter run also downloads Flutter's own tools and git history, which takes several minutes; let it finish.
 
-   ```bash
-   BUNDLE=build/linux/arm64/release/bundle
-   ls "$BUNDLE/plezy" "$BUNDLE/plezy-xr"     # both must exist
-   bash linux/packaging/bundle-libs.sh "$BUNDLE"
-   cp linux/packaging/plezy.sh "$BUNDLE/plezy.sh"   # launcher that points at the bundled libraries
-   ```
+**Start it**
+```
+~/plezy/plezy.sh
+```
 
-   If `plezy-xr` is missing, the OpenXR packages from step 2 were not found at configure time; install them and rebuild.
-5. **Run it.** Copy the `bundle` folder wherever you like (for example `~/plezy`) and start `~/plezy/plezy.sh`. To make it appear in the Steam library, use *Add a Non-Steam Game* and pick that file.
-6. **Make sure a headset runtime is active.** Start SteamVR (or another OpenXR runtime) with the Frame connected before pressing the VR button. If the button does nothing useful, run `~/plezy/plezy-xr --url <any video URL>` in a terminal: it prints why it could not start, such as no runtime or a missing OpenGL ES extension.
+To launch it from the Steam library, choose *Add a Non-Steam Game* and pick `~/plezy/plezy.sh`.
+
+If something fails, the script stops and prints the step it was on. Run it again after fixing the cause; finished steps are quick the second time.
 
 ## Using it
 
@@ -61,11 +55,11 @@ Bindings are suggested for the Khronos simple, Oculus Touch and Valve Index prof
 
 ## How it works
 
-The VR player is a separate program, `plezy-xr` (`linux/xr/`), started by the app when you press the button. It is built only when the OpenXR development files are installed, so without them the button stays hidden. It needs an OpenXR runtime that exposes `XR_KHR_opengl_es_enable` and `XR_MNDX_egl_enable` (Monado does; SteamVR's Linux support for these varies, so read the helper's error message if VR fails to start). You can run it by hand with `plezy-xr --url <stream> [--env cinema] [--layout sideBySideHalf]`, and set `PLEZY_XR_BIN` to point the app at a helper outside the bundle.
+The VR player is a separate program, `plezy-xr` (`linux/xr/`), started by the app when you press the button. It is built only when the OpenXR development files are installed, so without them the button stays hidden. It needs an OpenXR runtime that exposes `XR_KHR_opengl_es_enable` and `XR_MNDX_egl_enable` (both Monado and SteamVR on the Steam Frame do; on other runtimes, read the helper's error message if VR fails to start). You can run it by hand with `plezy-xr --url <stream> [--env cinema] [--layout sideBySideHalf]`, and set `PLEZY_XR_BIN` to point the app at a helper outside the bundle.
 
 ## Status
 
-The VR cinema has been built and unit-tested, but not yet run on a real Steam Frame. Expect rough edges, and please report what the helper prints when it fails.
+Tested on a Steam Frame with SteamVR: the VR helper starts a session, plays video, shows all five environments, and splits side-by-side 3D into the correct eye. The player's **Watch in VR cinema** button, the settings screen, and top-bottom 3D have been written and unit-tested but not yet tried on the headset. Please report what the helper prints when it fails: run `~/plezy/plezy-xr --url <video file or URL>` in a terminal.
 
 ## License and credits
 

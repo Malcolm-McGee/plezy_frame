@@ -546,7 +546,9 @@ class XrApp {
     XrInstanceCreateInfo ici{XR_TYPE_INSTANCE_CREATE_INFO};
     std::strncpy(ici.applicationInfo.applicationName, "Plezy VR", XR_MAX_APPLICATION_NAME_SIZE - 1);
     std::strncpy(ici.applicationInfo.engineName, "plezy-xr", XR_MAX_ENGINE_NAME_SIZE - 1);
-    ici.applicationInfo.apiVersion = XR_CURRENT_API_VERSION;
+    // Ask for 1.0: every runtime that supports a later 1.x also accepts it, whereas
+    // asking for the headers' newest version fails on runtimes that lag behind.
+    ici.applicationInfo.apiVersion = XR_API_VERSION_1_0;
     ici.enabledExtensionCount = static_cast<uint32_t>(enabled.size());
     ici.enabledExtensionNames = enabled.data();
     XR_TRY(xrCreateInstance(&ici, &instance_));
