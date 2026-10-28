@@ -50,10 +50,11 @@ if [[ ! -x "$BUNDLE/plezy-xr" ]]; then
 fi
 bash linux/packaging/bundle-libs.sh "$BUNDLE"
 install -m 755 linux/packaging/plezy.sh "$BUNDLE/plezy.sh"
+install -m 755 linux/packaging/plezy-steamos.sh "$BUNDLE/plezy-steamos.sh"   # picks a Wayland session; use this one from Steam
 rm -rf "$INSTALL_DIR"
 mkdir -p "$INSTALL_DIR"
 cp -a "$BUNDLE/." "$INSTALL_DIR/"
 
 echo
-echo "Done. Start it with:  $INSTALL_DIR/plezy.sh"
-echo "Add that file as a non-Steam game to launch it from the Steam library."
+echo "Done. Start it with:  $INSTALL_DIR/plezy-steamos.sh"
+echo "Add that file as a non-Steam game to launch it from the Steam library (it works in Game Mode too)."

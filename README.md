@@ -30,10 +30,12 @@ The script downloads what SteamOS lacks (libmpv, two small libraries it needs, a
 
 **Start it**
 ```
-~/plezy/plezy.sh
+~/plezy/plezy-steamos.sh
 ```
 
-To launch it from the Steam library, choose *Add a Non-Steam Game* and pick `~/plezy/plezy.sh`.
+To launch it from the Steam library, choose *Add a Non-Steam Game* and pick `~/plezy/plezy-steamos.sh`.
+
+Use `plezy-steamos.sh` rather than `plezy.sh`, including in Game Mode. Plezy's video needs a Wayland session with sub-surface support. The desktop has one, but Game Mode's compositor (gamescope) does not, so there the launcher starts a small private session (a nested KWin) sized to the screen and runs Plezy inside it. Each launch writes its output to `~/.local/state/plezy-launch.log`, which is the first place to look if it does not start.
 
 If something fails, the script stops and prints the step it was on. Run it again after fixing the cause; finished steps are quick the second time.
 
