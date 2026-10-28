@@ -49,7 +49,7 @@ if [[ ! -x "$BUNDLE/plezy-xr" ]]; then
   exit 1
 fi
 bash linux/packaging/bundle-libs.sh "$BUNDLE"
-cp linux/packaging/plezy.sh "$BUNDLE/plezy.sh"
+install -m 755 linux/packaging/plezy.sh "$BUNDLE/plezy.sh"
 rm -rf "$INSTALL_DIR"
 mkdir -p "$INSTALL_DIR"
 cp -a "$BUNDLE/." "$INSTALL_DIR/"
