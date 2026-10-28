@@ -1,214 +1,11 @@
-<h1>
-  <img src="assets/plezy.png" alt="Plezy Logo" height="24" style="vertical-align: middle;" />
-  Plezy
-</h1>
+# Plezy for Steam Frame
 
-A modern client for Plex, Jellyfin, and Emby on desktop, mobile, and TV. Built with Flutter for native performance and a clean interface.
-
-<p>
-  <a href="https://plezy.app">Website</a> ·
-  <a href="https://plezy.app/#screenshots">Screenshots</a> ·
-  <a href="#download">Download</a> ·
-  <a href="CONTRIBUTING.md">Contributing</a> ·
-  <a href="LICENSE">License</a>
-</p>
-
-<p align="center">
-  <img src="assets/readme-showcase.webp" alt="Plezy mobile screenshots" width="900" />
-</p>
-
-## Download
-
-<a href='https://apps.apple.com/app/apple-store/id6754315964?pt=128238902&ct=GitHub&mt=8'><img height='60' alt='Download on the App Store' src='./assets/app-store-badge.png'/></a>
-<a href='https://play.google.com/store/apps/details?id=com.edde746.plezy&referrer=utm_source%3Dgithub%26utm_campaign%3Dreadme_badge'><img height='60' alt='Get it on Google Play' src='./assets/play-store-badge.png'/></a>
-<a href='https://www.amazon.com/gp/product/B0GK65CVS1'><img height='60' alt='Available at the Amazon App Store' src='./assets/amazon-badge.png'/></a>
-<a href='https://get.microsoft.com/installer/download/9n5r1s1t68h7?referrer=appbadge&cid=github'><img height='60' alt='Get it from Microsoft' src='./assets/microsoft-badge.png'/></a>
-
-| Platform | Download |
-| --- | --- |
-| macOS | [DMG (x64, arm64)](https://github.com/edde746/plezy/releases/latest/download/plezy-macos.dmg) |
-| Linux x64 | [.deb](https://github.com/edde746/plezy/releases/latest/download/plezy-linux-x64.deb) · [.rpm](https://github.com/edde746/plezy/releases/latest/download/plezy-linux-x64.rpm) · [.pkg.tar.zst](https://github.com/edde746/plezy/releases/latest/download/plezy-linux-x64.pkg.tar.zst) · [.flatpak](https://github.com/edde746/plezy/releases/latest/download/plezy-linux-x64.flatpak) · [portable tar.gz](https://github.com/edde746/plezy/releases/latest/download/plezy-linux-x64.tar.gz) |
-| Linux arm64 | [.deb](https://github.com/edde746/plezy/releases/latest/download/plezy-linux-arm64.deb) · [.rpm](https://github.com/edde746/plezy/releases/latest/download/plezy-linux-arm64.rpm) · [.pkg.tar.zst](https://github.com/edde746/plezy/releases/latest/download/plezy-linux-arm64.pkg.tar.zst) · [.flatpak](https://github.com/edde746/plezy/releases/latest/download/plezy-linux-arm64.flatpak) · [portable tar.gz](https://github.com/edde746/plezy/releases/latest/download/plezy-linux-arm64.tar.gz) |
-
-<details>
-<summary>Install with a package manager</summary>
-
-### macOS — Homebrew
-
-```bash
-brew tap edde746/plezy https://github.com/edde746/plezy
-brew install --cask plezy
-```
-
-### Windows — WinGet
-
-```bash
-winget install edde746.Plezy
-```
-
-### Linux — Flatpak
-
-Install Flatpak with your distribution's package manager, download the bundle for your architecture above, then run:
-
-```bash
-flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
-flatpak install --user flathub org.freedesktop.Platform//25.08
-flatpak install --user ./plezy-linux-x64.flatpak
-flatpak run com.edde746.plezy
-```
-
-On arm64, install `plezy-linux-arm64.flatpak`.
-
-<details>
-<summary>Sandbox, playback, and folder access</summary>
-
-- Not on Flathub — the remote supplies the Freedesktop runtime only.
-- Video playback needs a Wayland session; a pure X11 session shows the interface but cannot create the video plane.
-- No host or home filesystem access; app data lives in `~/.var/app/com.edde746.plezy/`. Add host folders through the desktop file chooser portal, and keep download folders writable.
-- Network, display, audio, and device access are enabled. `--device=all` (Flatpak 1.14 compatibility) exposes more than GPUs and controllers; session-bus access stays filtered.
-
-</details>
-
-### Arch Linux — Pacman
-
-[Distribution package](https://archlinux.org/packages/extra/x86_64/plezy/).
-
-```bash
-sudo pacman -S plezy
-```
-
-### Fedora / Red Hat — DNF
-
-[Installation instructions](https://github.com/aldobarr/plezy-rpm) · Community repository by [@aldobarr](https://github.com/aldobarr).
-
-### Nix
-
-[Community package](https://search.nixos.org/packages?channel=unstable&query=plezy) maintained by [@mio-19](https://github.com/mio-19) and [@MiniHarinn](https://github.com/MiniHarinn).
-
-### aerynOS — Moss
-
-[Distribution package](https://github.com/aerynOS/recipes/tree/main/p/plezy).
-
-```bash
-sudo moss pad plezy
-```
-
-</details>
-
-## Features
-
-### <img src="assets/readme_icons/browse.svg" height="20" alt="" align="center" /> Browse & Discover
-- Libraries, collections, and playlists — video and audio
-- Discover hub — Continue Watching, Next Up, trending, and recommendations
-- Cross-server search across every connected Plex, Jellyfin, and Emby server, including actors and directors
-- Filtering, sorting, and alphabetical jump navigation
-- Folder browsing and folder playback — home-video libraries open in folder view
-- Resolution, HDR/Dolby Vision, and audio-format badges on cards and detail pages
-- Favorites and unwatched library filters[^mb]
-- Extras — trailers, deleted scenes, behind-the-scenes
-
-### <img src="assets/readme_icons/explore.svg" height="20" alt="" align="center" /> Explore & Requests
-- Explore tab — watchlist, trending, popular, and recommendation rows from Plex Discover[^plex], Trakt, MyAnimeList, AniList, Simkl, and Seerr[^connect]
-- Search any connected catalog source
-- Catalog titles matched back to your own libraries by external ID
-- Seerr — request movies and shows with per-season, 4K, and advanced destination options, and see request status inline
-- Watchlist sync — add and remove titles on Plex, Trakt, MyAnimeList, AniList, and Simkl from anywhere in the app
-
-### <img src="assets/readme_icons/playback.svg" height="20" alt="" align="center" /> Playback
-- Wide codec support (HEVC, AV1, VP9, and more)
-- HDR and Dolby Vision[^hdr]
-- Direct play, or transcode presets from 240p/320 kbps to 1080p/20 Mbps
-- Multi-version switching with per-version file details
-- Full ASS/SSA subtitles with customizable styling
-- Online subtitle search & download[^plex]
-- Audio & subtitle choices remembered per title, or follow the server's per-episode selections
-- Progress sync and resume
-- Auto-play next episode with skip intro / skip credits
-- Chapter navigation with thumbnail scrub previews
-- Playback speed from 0.25x to 8x, audio sync offset, sleep timer (fixed durations or end of video)
-- Video zoom 50-200% with pinch, presets, and hotkeys
-- Audio passthrough[^pass], output channel limit (5.1 or stereo, with center-channel boost), and loudness normalization
-- File Info sheet — every version, file, and stream the server reports
-- Ambient lighting and GLSL shader presets[^mpv]
-- Picture-in-Picture[^pip]
-- Refresh-rate matching[^rrm]
-- External player launch (VLC, MX Player, etc.) with progress sync back[^android]
-
-### <img src="assets/readme_icons/music.svg" height="20" alt="" align="center" /> Music
-- Music libraries — artist, album, and track browsing with square artwork
-- Album and artist screens with play, shuffle, and Instant Mix
-- Gapless playback with a full play queue — reorder, remove, play next, add to queue
-- Now Playing with synced lyrics[^lyrics], persistent mini-player, and sleep timer
-- Background playback with lock-screen, media-key, and notification controls[^bgaudio]
-- Offline playback of downloaded albums and tracks
-- Streaming quality presets — Original, 320, 192, or 128 kbps
-
-### <img src="assets/readme_icons/live-tv.svg" height="20" alt="" align="center" /> Live TV & DVR
-- Live TV channel browsing, tuning, and favorites
-- EPG guide with What's On and per-show schedules
-- DVR recording rules, scheduled recordings, and a rememberable recording target library[^plex]
-- Multi-server Live TV support where available
-
-### <img src="assets/readme_icons/downloads.svg" height="20" alt="" align="center" /> Downloads & Offline
-- Download movies, shows, and music for offline playback[^dl]
-- Background queue with pause / resume
-- Sync rules for automatic downloads, with per-show "Include Specials"
-- Offline browsing with watch state sync-back on reconnect
-
-### <img src="assets/readme_icons/watch-together.svg" height="20" alt="" align="center" /> Watch Together
-- Rooms on [Open Watch Party](https://openwatch.party) — share a six-character code; friends join from Plezy or another Open Watch Party app
-- Everyone plays their own copy from their own server — Plex, Jellyfin, or Emby — matched by catalogue IDs, with a picker when several copies fit
-- Synchronized play / pause / seek, host or shared control, room lock, and host handoff
-- Public relays by default, or point Plezy at your own self-hosted relay
-
-### <img src="assets/readme_icons/integrations.svg" height="20" alt="" align="center" /> Integrations
-- Discord Rich Presence[^desktop]
-- Trakt, MyAnimeList, AniList, and Simkl — ratings, watched sync, and real-time scrobbling[^rt]
-- Scores from connected trackers on detail pages — Trakt, Simkl, MyAnimeList, and AniList, plus Rotten Tomatoes, Metacritic, Letterboxd, IMDb, and TMDB through MDBList
-- Plezy Remote — control desktop and TV from mobile
-- Watch Next row and tvOS Top Shelf[^shelf]
-- [`plezy://` links](#plezy-links) to open a profile, play a title, or tune a channel from Home Assistant, launchers, or an NFC tag; any movie, show, or episode menu shows its link[^links]
-
-### <img src="assets/readme_icons/customization.svg" height="20" alt="" align="center" /> Platform & Customization
-- Desktop, mobile, and TV — full D-pad, keyboard, and gamepad support
-- Multiple servers at once — Plex, Jellyfin, and Emby side by side
-- Profiles with per-profile downloads, watch state, and settings; Plex Home switching with PIN
-- Jellyfin and Emby local-server discovery and multiple URLs per server; Quick Connect sign-in[^jf]
-- TV layout options — corner spotlight backdrop, full-card artwork, and Force TV mode on desktop
-- Customizable keyboard shortcuts[^desktop]
-- Metadata and artwork editing
-- Settings import/export
-- Localized in English plus 21 translations
-
-[^jf]: Jellyfin only.
-[^mb]: Jellyfin and Emby only.
-[^plex]: Plex only.
-[^connect]: Requires connecting the service under Settings > Services.
-[^hdr]: In-app HDR toggle on Windows, macOS, iOS, tvOS, and Linux — Linux needs a colour-managed Wayland compositor. Dolby Vision on Android, macOS, and Apple TV.
-[^pass]: Desktop, Android TV, and Apple TV.
-[^mpv]: Requires mpv's GPU renderer — unavailable on iOS, tvOS, and macOS, and Android defaults to ExoPlayer.
-[^pip]: Android, iOS, and macOS — not on Android TV or Apple TV.
-[^rrm]: Windows, Android, and tvOS.
-[^android]: Progress sync on Android.
-[^lyrics]: Where your server provides lyrics.
-[^bgaudio]: tvOS pauses music when the app is backgrounded.
-[^dl]: Not available on tvOS.
-[^desktop]: Desktop only.
-[^rt]: Real-time scrobbling on Trakt and Simkl; MyAnimeList and AniList update on completion.
-[^shelf]: Android TV / Fire TV and tvOS.
-[^links]: Android, iOS, macOS, and tvOS.
-
-## Steam Frame and VR (OpenXR)
-
-On Linux, Plezy can play in a virtual cinema on a Steam Frame or any other OpenXR headset. Open a title, then press the **Watch in VR cinema** button in the player controls. The headset opens a curved screen in the environment chosen under *Settings → Video playback → VR cinema*; the desktop window shows a "Watching in VR" box until you take the headset off or choose **Exit VR**, and flat playback resumes where you left off.
+A VR cinema for [Plezy](https://github.com/edde746/plezy), the Plex, Jellyfin and Emby client. Watch your library on a huge curved screen in a virtual environment on a Steam Frame (or any OpenXR headset), including 3D movies.
 
 - **Environments:** Void, Cinema, Lounge, Space, and Passthrough (the screen floats over your real room; needs a runtime that offers alpha-blend or additive passthrough).
-- **3D movies:** side-by-side and top-bottom, half and full width. The packing is read from the file's container metadata (mpv `stereo-in`), then from tags in the file name (`HSBS`, `FSBS`, `H-OU`, `FTAB`, ...). Turn **Detect 3D movies** off to play everything flat.
-- **Controller bindings:** trigger = play/pause, right stick left/right = seek 10 s, right stick up/down = volume, `B` = next environment, `A` = next 3D mode (flat, SBS half/full, top-bottom half/full), left stick click = recenter, left menu = exit. Bindings are suggested for the Khronos simple, Oculus Touch and Valve Index profiles and can be rebound in SteamVR.
+- **3D movies:** side-by-side and top-bottom, half and full width. The format is read from the file's metadata, then from tags in the file name (`HSBS`, `FSBS`, `H-OU`, `FTAB`, ...).
 
-The VR player is a separate executable, `plezy-xr` (`linux/xr/`), built when the OpenXR development files are installed (`libopenxr-dev` and `libgles-dev` on Debian/Ubuntu); without them the build skips it and the button stays hidden. It needs a runtime that exposes `XR_KHR_opengl_es_enable` and `XR_MNDX_egl_enable` (Monado does; SteamVR's Linux runtime support for these varies, so check the helper's error message if VR fails to start). Run it by hand with `plezy-xr --url <stream> [--env cinema] [--layout sideBySideHalf]`, and set `PLEZY_XR_BIN` to point the app at a helper outside the bundle.
-
-### Installing on a Steam Frame
+## Install on a Steam Frame
 
 There is no prebuilt download with the VR cinema yet: the release packages above do not include `plezy-xr`, so for now you build Plezy yourself. Nothing below has been run on a real Steam Frame; it is the same Linux arm64 build the project already ships, plus the VR helper.
 
@@ -246,123 +43,30 @@ There is no prebuilt download with the VR cinema yet: the release packages above
 5. **Run it.** Copy the `bundle` folder wherever you like (for example `~/plezy`) and start `~/plezy/plezy.sh`. To make it appear in the Steam library, use *Add a Non-Steam Game* and pick that file.
 6. **Make sure a headset runtime is active.** Start SteamVR (or another OpenXR runtime) with the Frame connected before pressing the VR button. If the button does nothing useful, run `~/plezy/plezy-xr --url <any video URL>` in a terminal: it prints why it could not start, such as no runtime or a missing OpenGL ES extension.
 
-## plezy:// links
+## Using it
 
-Links start Plezy from outside the app. Any link may add `profile=<profile>`: a profile id, a Plex Home user UUID, or a display name (ignoring case; it must match one profile). Plezy switches to that profile first, and a protected profile still asks for its PIN. A link replaces whatever is playing.
+Open a title and press **Watch in VR cinema** in the player controls. The headset opens a curved screen in the environment chosen under *Settings → Video playback → VR cinema*. The desktop window shows "Watching in VR" until you take the headset off or choose **Exit VR**, and normal playback resumes where you left off. Turn **Detect 3D movies** off in the same settings group to play everything flat.
 
-| Link | Does |
-|---|---|
-| `plezy://open` | Opens Plezy |
-| `plezy://play?server=<server>&id=<item>` | Plays one item on one server, any backend |
-| `plezy://play?type=movie\|show&tmdb=<n>` | Plays a title from whichever server has it. Use `tmdb`, `tvdb`, `imdb=tt<n>`, or `plex=<hash>` (the Plex GUID without `plex://movie/`) |
-| `plezy://live?channel=<channel>` | Tunes a Live TV channel by key, number, or call sign. Optional `server=<server>` and `start=beginning\|live` |
+| Control | Action |
+| --- | --- |
+| Trigger | Play / pause |
+| Right stick left / right | Seek 10 seconds |
+| Right stick up / down | Volume |
+| `B` | Next environment |
+| `A` | Next 3D mode (flat, side-by-side half/full, top-bottom half/full) |
+| Left stick click | Recenter the screen |
+| Left menu | Exit VR |
 
-For a show, `mode=next` (the default) plays the next episode to watch, and `mode=shuffle` plays the show shuffled. The menu of any movie, show, or episode has **Show link**, and each profile's menu in **Switch Profile** has **Show profile link**. Both show the link as text and a QR code.
+Bindings are suggested for the Khronos simple, Oculus Touch and Valve Index profiles and can be rebound in SteamVR.
 
-```sh
-# Android / Android TV, over adb (Home Assistant: remote.turn_on with activity: plezy://...)
-adb shell am start -a android.intent.action.VIEW -d "plezy://play?type=show\&tvdb=81189\&profile=Kids"
-# macOS
-open "plezy://play?type=movie&tmdb=603"
-```
+## How it works
 
-On iOS, use the Open URLs action in Shortcuts.
+The VR player is a separate program, `plezy-xr` (`linux/xr/`), started by the app when you press the button. It is built only when the OpenXR development files are installed, so without them the button stays hidden. It needs an OpenXR runtime that exposes `XR_KHR_opengl_es_enable` and `XR_MNDX_egl_enable` (Monado does; SteamVR's Linux support for these varies, so read the helper's error message if VR fails to start). You can run it by hand with `plezy-xr --url <stream> [--env cinema] [--layout sideBySideHalf]`, and set `PLEZY_XR_BIN` to point the app at a helper outside the bundle.
 
-## Building from Source
+## Status
 
-### Prerequisites
-- Flutter SDK 3.47.0+
-- A Plex account, or a Jellyfin or Emby server with user credentials
+The VR cinema has been built and unit-tested, but not yet run on a real Steam Frame. Expect rough edges, and please report what the helper prints when it fails.
 
-### Setup
+## License and credits
 
-```bash
-git clone https://github.com/edde746/plezy.git
-cd plezy
-flutter pub get
-scripts/codegen.sh
-flutter run
-```
-
-<details>
-<summary>Code generation</summary>
-
-After modifying model classes or other generated sources:
-
-```bash
-scripts/codegen.sh
-```
-
-After modifying translations:
-
-```bash
-dart run slang
-```
-
-</details>
-
-<details>
-<summary>Packaging a Flatpak bundle</summary>
-
-Packages an **already fully resolved Linux release bundle** — pinned libmpv and bundled libraries included, not a Flathub source-build manifest. Run it on Linux, on the same architecture as the bundle, after following the bundle preparation steps in [the Linux release workflow](.github/workflows/build.yml): `flutter build linux` alone does not produce all the required bundled libraries.
-
-Install the packaging tools (Debian/Ubuntu shown) plus the native-architecture SDK and runtime:
-
-```bash
-sudo apt-get update
-sudo apt-get install -y flatpak flatpak-builder imagemagick
-flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
-flatpak install --user flathub org.freedesktop.Platform//25.08 org.freedesktop.Sdk//25.08
-
-BUNDLE_DIR=build/linux/x64/release/bundle
-python3 linux/packaging/build-flatpak.py --bundle "$BUNDLE_DIR" --arch x64 --output "$PWD"
-```
-
-That writes `plezy-linux-x64.flatpak`, installable with the Flatpak commands above; on arm64, use the prepared arm64 bundle directory and `--arch arm64`. Package from the checkout matching the bundle, since the version comes from `pubspec.yaml`.
-
-Cross-architecture packaging needs native Flatpak tools, a registered binfmt interpreter, and the target SDK/runtime installed with `flatpak install --user --arch=x86_64` (or `aarch64`) — never run Flatpak's namespace tools under emulation. Pass `--arch x64` or `--arch arm64` to the checker and the matching Flatpak architecture to `flatpak run --arch=...`.
-
-Check the installed package against the runtime (not just the SDK), then launch it on a Wayland desktop and exercise streaming, audio, downloads/offline playback, and file chooser portals:
-
-```bash
-python3 linux/packaging/check-flatpak.py
-```
-
-The check fails on a non-executable entry point or an unresolved bundled ELF dependency. A container without a GPU can use `flatpak run --env=GALLIUM_DRIVER=softpipe com.edde746.plezy` for software-rendered verification; this is not a hardware-decoding or HDR test.
-
-</details>
-
-<details>
-<summary>Local checks</summary>
-
-```bash
-scripts/ci_checks.sh
-```
-
-To install the same pre-commit checks locally:
-
-```bash
-scripts/setup_hooks.sh
-```
-
-End-to-end tests (Android emulator plus a Dockerized Jellyfin fixture):
-
-```bash
-python3 scripts/maestro/run_maestro.py basic
-```
-
-</details>
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for development workflow, formatting, tests, and translation guidelines.
-
-## License
-
-Plezy is licensed under [GPL-3.0](LICENSE).
-
-## Acknowledgments
-
-- Built with [Flutter](https://flutter.dev)
-- Supports [Plex Media Server](https://www.plex.tv), [Jellyfin](https://jellyfin.org), and [Emby](https://emby.media)
-- Playback powered by [mpv](https://mpv.io) via our [mpv-build](https://github.com/edde746/mpv-build) pipeline (started as a fork of [MPVKit](https://github.com/mpvkit/MPVKit); on Android through its mpv-android library, whose Kotlin/JNI glue descends from [libmpv-android](https://github.com/jarnedemeulemeester/libmpv-android)), Android [ExoPlayer](https://developer.android.com/media/media3/exoplayer), and [libass-android](https://github.com/peerless2012/libass-android)
+Licensed under [GPL-3.0](LICENSE). This is a fork of [Plezy](https://github.com/edde746/plezy) by edde746, built with [Flutter](https://flutter.dev) and [mpv](https://mpv.io). The original project's README is at the upstream link above.
