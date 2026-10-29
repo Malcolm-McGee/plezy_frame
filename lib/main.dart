@@ -42,6 +42,7 @@ import 'services/macos_window_service.dart';
 import 'services/native_window_service.dart';
 import 'services/fullscreen_state_manager.dart';
 import 'services/settings_service.dart';
+import 'services/xr_cinema_service.dart';
 import 'services/agent_control_service.dart';
 import 'widgets/agent_control_scope.dart';
 import 'widgets/settings_builder.dart';
@@ -1052,7 +1053,8 @@ void _startNonessentialInitialization(SettingsService settings) {
 
   bestEffort('Fullscreen monitor', () async {
     FullscreenStateManager().startMonitoring();
-    if (PlatformDetector.isDesktopOS() && settings.read(SettingsService.startInFullscreen)) {
+    if (PlatformDetector.isDesktopOS() &&
+        (settings.read(SettingsService.startInFullscreen) || XrCinemaService.launchedForVr)) {
       await FullscreenStateManager().enterFullscreen();
     }
   });

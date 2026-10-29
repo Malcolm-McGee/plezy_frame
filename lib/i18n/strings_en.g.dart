@@ -770,6 +770,12 @@ class Translations$settings$en {
 	/// en: 'Float the screen over your real room (needs headset passthrough)'
 	String get vrEnvironmentPassthroughDescription => 'Float the screen over your real room (needs headset passthrough)';
 
+	/// en: 'Always watch in VR'
+	String get vrAutoEnter => 'Always watch in VR';
+
+	/// en: 'Open the VR cinema as soon as a title starts, and return here when you leave VR'
+	String get vrAutoEnterDescription => 'Open the VR cinema as soon as a title starts, and return here when you leave VR';
+
 	/// en: 'Detect 3D movies'
 	String get vrAutoDetect3d => 'Detect 3D movies';
 
@@ -8410,6 +8416,8 @@ extension on Translations {
 			'settings.vrEnvironmentSpaceDescription' => 'A starfield around a wide curved screen',
 			'settings.vrEnvironmentPassthrough' => 'Passthrough',
 			'settings.vrEnvironmentPassthroughDescription' => 'Float the screen over your real room (needs headset passthrough)',
+			'settings.vrAutoEnter' => 'Always watch in VR',
+			'settings.vrAutoEnterDescription' => 'Open the VR cinema as soon as a title starts, and return here when you leave VR',
 			'settings.vrAutoDetect3d' => 'Detect 3D movies',
 			'settings.vrAutoDetect3dDescription' => 'Show side-by-side and top-bottom 3D files in 3D, using the file\'s metadata or name',
 			'settings.playbackBuffer' => 'Playback Buffer',
@@ -8668,10 +8676,10 @@ extension on Translations {
 			'settings.exportDialogTitle' => 'Export Plezy settings',
 			'themeEditor.builtIn' => 'Built-in',
 			'themeEditor.presets' => 'Presets',
-			'themeEditor.custom' => 'Custom',
-			'themeEditor.customEmpty' => 'Not created yet',
 			_ => null,
 		} ?? switch (path) {
+			'themeEditor.custom' => 'Custom',
+			'themeEditor.customEmpty' => 'Not created yet',
 			'themeEditor.editCustom' => 'Edit custom theme',
 			'themeEditor.editCustomDescription' => 'Choose every color yourself',
 			'themeEditor.locked' => 'Unlock with Supporter',
@@ -9182,10 +9190,10 @@ extension on Translations {
 			'profiles.connectionAs' => ({required Object displayName}) => 'as ${displayName}',
 			'profiles.makeDefault' => 'Make default',
 			'profiles.removeConnection' => 'Remove',
-			'profiles.profileRenamed' => 'Profile renamed.',
-			'profiles.borrowAddTo' => ({required Object displayName}) => 'Add to ${displayName}',
 			_ => null,
 		} ?? switch (path) {
+			'profiles.profileRenamed' => 'Profile renamed.',
+			'profiles.borrowAddTo' => ({required Object displayName}) => 'Add to ${displayName}',
 			'profiles.borrowExplain' => 'Borrow another profile\'s connection. PIN-protected profiles require a PIN.',
 			'profiles.borrowEmpty' => 'Nothing to borrow yet.',
 			'profiles.borrowEmptySubtitle' => 'Connect Plex, Jellyfin, or Emby to another profile first.',
@@ -9696,10 +9704,10 @@ extension on Translations {
 			'liveTv.recordingScheduled' => 'Recording scheduled',
 			'liveTv.alreadyScheduled' => 'This program is already scheduled',
 			'liveTv.dvrAdminRequired' => 'DVR settings require an admin account',
-			'liveTv.recordingFailed' => 'Couldn\'t schedule recording',
-			'liveTv.recordingTargetMissing' => 'Couldn\'t determine recording library',
 			_ => null,
 		} ?? switch (path) {
+			'liveTv.recordingFailed' => 'Couldn\'t schedule recording',
+			'liveTv.recordingTargetMissing' => 'Couldn\'t determine recording library',
 			'liveTv.recordNotAvailable' => 'Recording not available for this program',
 			'liveTv.recordingCancelled' => 'Recording canceled',
 			'liveTv.recordingRuleDeleted' => 'Recording rule deleted',
@@ -10210,10 +10218,10 @@ extension on Translations {
 			'performanceOverlay.primaries' => 'Primaries',
 			'performanceOverlay.transfer' => 'Transfer',
 			'performanceOverlay.renderFps' => 'Render FPS',
-			'performanceOverlay.displayFps' => 'Display FPS',
-			'performanceOverlay.avSync' => 'A/V Sync',
 			_ => null,
 		} ?? switch (path) {
+			'performanceOverlay.displayFps' => 'Display FPS',
+			'performanceOverlay.avSync' => 'A/V Sync',
 			'performanceOverlay.dropped' => 'Dropped',
 			'performanceOverlay.dvRpus' => 'DV RPUs',
 			'performanceOverlay.dvRpuAverage' => 'DV RPU Avg',

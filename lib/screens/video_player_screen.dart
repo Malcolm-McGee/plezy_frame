@@ -990,6 +990,9 @@ class VideoPlayerScreenState extends State<VideoPlayerScreen>
 
   /// The running VR cinema helper, if any.
   XrCinemaSession? _vrSession;
+
+  /// Whether this screen has already opened the cinema on its own.
+  bool _vrAutoEntered = false;
   ShaderService? _shaderService;
   AmbientLightingService? _ambientLightingService;
 

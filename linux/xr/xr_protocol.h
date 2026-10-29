@@ -16,7 +16,10 @@
 //   layout <wire name>
 // Events leave on stdout, one per line:
 //   ready
-//   position <seconds> <duration> <paused 0|1> <env> <layout>
+//   position <seconds> <duration> <paused 0|1> <env> <layout> <hwdec> <dropped>
+//     hwdec is mpv's hwdec-current ("no" = software decoding); dropped is the
+//     count of frames mpv dropped while decoding or displaying. Older readers
+//     ignore the trailing fields.
 //   ended
 //   error <message>
 
@@ -87,10 +90,12 @@ inline Command ParseCommand(const std::string& raw) {
 }
 
 inline std::string FormatPosition(
-    double position, double duration, bool paused, const std::string& env, const std::string& layout) {
-  char buf[256];
+    double position, double duration, bool paused, const std::string& env, const std::string& layout,
+    const std::string& hwdec = "no", long long dropped = 0) {
+  char buf[320];
   std::snprintf(
-      buf, sizeof buf, "position %.3f %.3f %d %s %s", position, duration, paused ? 1 : 0, env.c_str(), layout.c_str());
+      buf, sizeof buf, "position %.3f %.3f %d %s %s %s %lld", position, duration, paused ? 1 : 0, env.c_str(),
+      layout.c_str(), hwdec.empty() ? "no" : hwdec.c_str(), dropped);
   return buf;
 }
 

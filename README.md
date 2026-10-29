@@ -35,6 +35,8 @@ The script downloads what SteamOS lacks (libmpv, two small libraries it needs, a
 
 To launch it from the Steam library, choose *Add a Non-Steam Game* and pick `~/plezy/plezy-steamos.sh`.
 
+`plezy-steamos.sh` starts Plezy as a **VR program**: fullscreen, and any title you play opens straight in the VR cinema with your chosen environment and 3D mode. Leaving VR (left menu button) takes you back to the library. To use the normal window instead, start it with `PLEZY_VR=0`, or turn on *Settings → Video playback → VR cinema → Always watch in VR* to get the same behavior from any launch.
+
 Use `plezy-steamos.sh` rather than `plezy.sh`, including in Game Mode. Plezy's video needs a Wayland session with sub-surface support. The desktop has one, but Game Mode's compositor (gamescope) does not, so there the launcher starts a small private session (a nested KWin) sized to the screen and runs Plezy inside it. Each launch writes its output to `~/.local/state/plezy-launch.log`, which is the first place to look if it does not start.
 
 If something fails, the script stops and prints the step it was on. Run it again after fixing the cause; finished steps are quick the second time.
@@ -54,6 +56,10 @@ Open a title and press **Watch in VR cinema** in the player controls. The headse
 | Left menu | Exit VR |
 
 Bindings are suggested for the Khronos simple, Oculus Touch and Valve Index profiles and can be rebound in SteamVR.
+
+## Performance
+
+The VR cinema decodes video with the Frame's hardware decoder (`v4l2m2m-copy`) and falls back to software decoding for formats it does not handle. Both play a 3840×1080 H.264 stream in real time, but the hardware decoder uses about one seventh of the CPU. Its status line reports the decoder in use and the number of dropped frames (`~/plezy/plezy-xr --url <file>` prints them). Playing inside the desktop window (the flat player) is much slower for large files, because that picture is drawn through a nested desktop compositor, so use the VR cinema for 3D and other heavy files.
 
 ## How it works
 

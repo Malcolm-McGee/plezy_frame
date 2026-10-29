@@ -49,6 +49,14 @@ void main() {
     expect(stereo3dFromMpvStereoIn(null).isStereo, isFalse);
   });
 
+  test('a bare 3D tag is only a guess, and only when asked for', () {
+    expect(detectStereo3dFromName('Avatar (2009) 3D.mkv'), Stereo3dLayout.none);
+    expect(detectStereo3dFromName('Avatar (2009) 3D.mkv', guessFromBare3dTag: true), Stereo3dLayout.sideBySideHalf);
+    expect(detectStereo3dFromName('Avatar 3D FSBS', guessFromBare3dTag: true), Stereo3dLayout.sideBySideFull);
+    expect(detectStereo3dFromName('Avatar 2009.mkv', guessFromBare3dTag: true), Stereo3dLayout.none);
+    expect(resolveStereo3d(name: 'Movie 3D', guessFromBare3dTag: true).layout, Stereo3dLayout.sideBySideHalf);
+  });
+
   test('resolveStereo3d prefers override, then container, then name', () {
     const sbs = Stereo3dInfo(Stereo3dLayout.sideBySideHalf);
     const tab = Stereo3dInfo(Stereo3dLayout.topBottomHalf);

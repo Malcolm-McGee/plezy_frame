@@ -37,7 +37,7 @@ enum Stereo3dLayout {
 /// contains the letters ("Absbsb") never triggers. Returns [Stereo3dLayout.none]
 /// when nothing reliable is found; a bare `3D` tag does not say how the eyes are
 /// packed, so it is not enough on its own.
-Stereo3dLayout detectStereo3dFromName(String? name) {
+Stereo3dLayout detectStereo3dFromName(String? name, {bool guessFromBare3dTag = false}) {
   if (name == null || name.isEmpty) return Stereo3dLayout.none;
   final tokens = name.toLowerCase().split(RegExp(r'[^a-z0-9]+')).where((t) => t.isNotEmpty).toList();
   // "h-sbs", "half-ou" arrive as separate tokens; look at adjacent pairs too.
@@ -51,6 +51,9 @@ Stereo3dLayout detectStereo3dFromName(String? name) {
   if (candidates.any(fullTab.contains)) return Stereo3dLayout.topBottomFull;
   if (candidates.any(halfSbs.contains)) return Stereo3dLayout.sideBySideHalf;
   if (candidates.any(halfTab.contains)) return Stereo3dLayout.topBottomHalf;
+  // A lone "3D" says it is 3D but not how the eyes are packed. Half side-by-side is by far the most
+  // common, and it can be changed in VR, so it is a better guess than showing two pictures.
+  if (guessFromBare3dTag && candidates.contains('3d')) return Stereo3dLayout.sideBySideHalf;
   return Stereo3dLayout.none;
 }
 
@@ -131,8 +134,13 @@ class Stereo3dInfo {
 
 /// Picks the effective layout: a user override wins, then container metadata,
 /// then the file name.
-Stereo3dInfo resolveStereo3d({Stereo3dInfo? userOverride, Stereo3dInfo? container, String? name}) {
+Stereo3dInfo resolveStereo3d({
+  Stereo3dInfo? userOverride,
+  Stereo3dInfo? container,
+  String? name,
+  bool guessFromBare3dTag = false,
+}) {
   if (userOverride != null) return userOverride;
   if (container != null && container.isStereo) return container;
-  return Stereo3dInfo(detectStereo3dFromName(name));
+  return Stereo3dInfo(detectStereo3dFromName(name, guessFromBare3dTag: guessFromBare3dTag));
 }

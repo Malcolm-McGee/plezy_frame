@@ -7,9 +7,15 @@
 # session this starts a small private one (a nested KWin, drawn inside the X11
 # window gamescope provides) and runs Plezy inside it.
 #
+# It also starts Plezy as a VR program: fullscreen, and every title opens straight
+# in the VR cinema (see XrCinemaService.launchedForVr). Set PLEZY_VR=0 to run it as
+# an ordinary desktop app instead.
+#
 # Set PLEZY_FORCE_NESTED=1 to always use the nested session, or
 # PLEZY_NESTED_SIZE=WIDTHxHEIGHT to override the detected screen size.
 set -u
+
+export PLEZY_VR="${PLEZY_VR-1}"
 
 DIR="$(dirname "$(readlink -f "$0")")"
 

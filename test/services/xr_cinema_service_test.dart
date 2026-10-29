@@ -18,6 +18,15 @@ void main() {
       expect(p.layout, Stereo3dLayout.sideBySideHalf);
     });
 
+    test('reads the decoder and dropped frames, and tolerates their absence', () {
+      final full = parseXrCinemaEvent('position 1.000 9.000 0 cinema none v4l2m2m-copy 12')! as XrCinemaPosition;
+      expect(full.hwdec, 'v4l2m2m-copy');
+      expect(full.droppedFrames, 12);
+      final old = parseXrCinemaEvent('position 1.000 9.000 0 cinema none')! as XrCinemaPosition;
+      expect(old.hwdec, 'no');
+      expect(old.droppedFrames, 0);
+    });
+
     test('parses simple events and keeps error text', () {
       expect(parseXrCinemaEvent('ready'), isA<XrCinemaReady>());
       expect(parseXrCinemaEvent('ended\n'), isA<XrCinemaEnded>());

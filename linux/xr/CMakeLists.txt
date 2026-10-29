@@ -21,9 +21,14 @@ target_compile_options(plezy-xr PRIVATE -Wall -Wextra -Wno-missing-field-initial
 # it to link against that instead of whatever pkg-config reports.
 set(PLEZY_OPENXR_LOADER "" CACHE FILEPATH "Path to a libopenxr_loader.so to link instead of the pkg-config one")
 if(NOT PLEZY_OPENXR_LOADER)
-  # No shared loader on the system (SteamOS) but SteamVR bundles one: use it.
-  find_library(PLEZY_SYSTEM_OPENXR_LOADER NAMES libopenxr_loader.so)
-  if(NOT PLEZY_SYSTEM_OPENXR_LOADER AND EXISTS "/opt/steamvr/bin/linuxarm64/libopenxr_loader.so")
+  # Look only in real system library folders: the default search also covers the
+  # install prefix, which holds a copy of the loader from the previous build.
+  find_library(PLEZY_SYSTEM_OPENXR_LOADER NAMES libopenxr_loader.so NO_DEFAULT_PATH
+               PATHS /usr/lib /usr/lib64 /usr/local/lib /usr/lib/aarch64-linux-gnu /usr/lib/x86_64-linux-gnu)
+  if(PLEZY_SYSTEM_OPENXR_LOADER)
+    set(PLEZY_OPENXR_LOADER "${PLEZY_SYSTEM_OPENXR_LOADER}")
+  elseif(EXISTS "/opt/steamvr/bin/linuxarm64/libopenxr_loader.so")
+    # SteamOS has only a stub libopenxr_loader.a, but SteamVR bundles a real loader.
     set(PLEZY_OPENXR_LOADER "/opt/steamvr/bin/linuxarm64/libopenxr_loader.so")
     message(STATUS "Using SteamVR's OpenXR loader: ${PLEZY_OPENXR_LOADER}")
   endif()

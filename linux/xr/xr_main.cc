@@ -55,6 +55,9 @@ struct Options {
   bool swap_eyes = false;
   int volume = -1;
   std::string title;
+  // mpv's --hwdec value. The default tries the Snapdragon's V4L2 decoder first and
+  // falls back to whatever mpv thinks is safe; "no" forces software decoding.
+  std::string hwdec = "v4l2m2m-copy,auto-safe";
 };
 
 void Emit(const std::string& line) {
@@ -301,12 +304,16 @@ class VideoPlayer {
       return false;
     }
     mpv_set_option_string(mpv_, "vo", "libmpv");
-    mpv_set_option_string(mpv_, "hwdec", "auto-safe");
+    mpv_set_option_string(mpv_, "hwdec", opt.hwdec.c_str());
     mpv_set_option_string(mpv_, "keep-open", "no");
     mpv_set_option_string(mpv_, "audio-client-name", "Plezy VR");
     mpv_set_option_string(mpv_, "terminal", "no");
     mpv_set_option_string(mpv_, "input-default-bindings", "no");
     mpv_set_option_string(mpv_, "osc", "no");
+    // Network streams of big 3D files: read well ahead so a Wi-Fi hiccup does not stall playback.
+    mpv_set_option_string(mpv_, "cache", "yes");
+    mpv_set_option_string(mpv_, "demuxer-max-bytes", "400MiB");
+    mpv_set_option_string(mpv_, "demuxer-readahead-secs", "90");
     if (opt.start_seconds > 0.5) {
       char start[32];
       std::snprintf(start, sizeof start, "%.3f", opt.start_seconds);
@@ -338,6 +345,9 @@ class VideoPlayer {
     mpv_observe_property(mpv_, 0, "pause", MPV_FORMAT_FLAG);
     mpv_observe_property(mpv_, 0, "video-params/w", MPV_FORMAT_INT64);
     mpv_observe_property(mpv_, 0, "video-params/h", MPV_FORMAT_INT64);
+    mpv_observe_property(mpv_, 0, "hwdec-current", MPV_FORMAT_STRING);
+    mpv_observe_property(mpv_, 0, "frame-drop-count", MPV_FORMAT_INT64);
+    mpv_observe_property(mpv_, 0, "decoder-frame-drop-count", MPV_FORMAT_INT64);
 
     mpv_opengl_init_params gl_init{GetProcAddress, nullptr};
     mpv_render_param params[] = {
@@ -388,8 +398,13 @@ class VideoPlayer {
         } else if (p->format == MPV_FORMAT_FLAG && p->data && !std::strcmp(p->name, "pause")) {
           paused_ = *static_cast<int*>(p->data) != 0;
         } else if (p->format == MPV_FORMAT_INT64 && p->data) {
-          if (!std::strcmp(p->name, "video-params/w")) video_w_ = static_cast<int>(*static_cast<int64_t*>(p->data));
-          if (!std::strcmp(p->name, "video-params/h")) video_h_ = static_cast<int>(*static_cast<int64_t*>(p->data));
+          const int64_t v = *static_cast<int64_t*>(p->data);
+          if (!std::strcmp(p->name, "video-params/w")) video_w_ = static_cast<int>(v);
+          if (!std::strcmp(p->name, "video-params/h")) video_h_ = static_cast<int>(v);
+          if (!std::strcmp(p->name, "frame-drop-count")) display_drops_ = v;
+          if (!std::strcmp(p->name, "decoder-frame-drop-count")) decoder_drops_ = v;
+        } else if (p->format == MPV_FORMAT_STRING && p->data && !std::strcmp(p->name, "hwdec-current")) {
+          hwdec_current_ = *static_cast<char**>(p->data);
         }
       } else if (e->event_id == MPV_EVENT_END_FILE) {
         auto* ef = static_cast<mpv_event_end_file*>(e->data);
@@ -484,8 +499,12 @@ class VideoPlayer {
   double position() const { return position_; }
   double duration() const { return duration_; }
   bool paused() const { return paused_; }
+  const std::string& hwdec() const { return hwdec_current_; }
+  long long dropped() const { return display_drops_ + decoder_drops_; }
 
  private:
+  std::string hwdec_current_ = "no";
+  int64_t display_drops_ = 0, decoder_drops_ = 0;
   mpv_handle* mpv_ = nullptr;
   mpv_render_context* render_ = nullptr;
   std::atomic<bool> frame_ready_{false};
@@ -611,7 +630,8 @@ class XrApp {
       if (Clock::now() - last_report > std::chrono::milliseconds(500)) {
         last_report = Clock::now();
         Emit(xr::FormatPosition(
-            video_->position(), video_->duration(), video_->paused(), env_->wire_name, WireLayout()));
+            video_->position(), video_->duration(), video_->paused(), env_->wire_name, WireLayout(), video_->hwdec(),
+            video_->dropped()));
       }
     }
     return true;
@@ -1207,6 +1227,8 @@ bool ParseArgs(int argc, char** argv, Options* o, std::string* error) {
       o->layout = v;
     else if (a == "--swap-eyes")
       o->swap_eyes = true;
+    else if (a == "--hwdec" && next(&v))
+      o->hwdec = v;
     else if (a == "--volume" && next(&v))
       o->volume = std::atoi(v.c_str());
     else if (a == "--title" && next(&v))

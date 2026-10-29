@@ -42,12 +42,20 @@ class XrCinemaPosition extends XrCinemaEvent {
   final String environment;
   final Stereo3dLayout layout;
 
+  /// mpv's hardware decoder in use (`no` means software decoding).
+  final String hwdec;
+
+  /// Frames mpv has dropped so far; a rising count means the headset cannot keep up.
+  final int droppedFrames;
+
   const XrCinemaPosition({
     required this.position,
     required this.duration,
     required this.paused,
     required this.environment,
     required this.layout,
+    this.hwdec = 'no',
+    this.droppedFrames = 0,
   });
 }
 
@@ -93,6 +101,8 @@ XrCinemaEvent? parseXrCinemaEvent(String line) {
         paused: parts[2] == '1',
         environment: parts.length > 3 ? parts[3] : '',
         layout: Stereo3dLayout.fromWireName(parts.length > 4 ? parts[4] : null),
+        hwdec: parts.length > 5 ? parts[5] : 'no',
+        droppedFrames: parts.length > 6 ? int.tryParse(parts[6]) ?? 0 : 0,
       );
   }
   return null;
@@ -202,6 +212,10 @@ class XrCinemaService {
   /// The helper itself still reports an error when no headset or OpenXR runtime
   /// is active, so the button is offered wherever the helper exists.
   static bool get isSupported => Platform.isLinux && helperPath != null;
+
+  /// True when the launcher started the app as a VR program (`PLEZY_VR=1`, set by
+  /// `plezy-steamos.sh`): fullscreen, and every title opens straight in the cinema.
+  static bool get launchedForVr => Platform.isLinux && Platform.environment['PLEZY_VR'] == '1';
 
   static String? get helperPath => Platform.isLinux
       ? resolveXrHelperPath(resolvedExecutable: Platform.resolvedExecutable, environment: Platform.environment)

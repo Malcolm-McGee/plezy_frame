@@ -1,10 +1,23 @@
 part of '../../video_player_screen.dart';
 
 extension _VideoPlayerVrCinemaMethods on VideoPlayerScreenState {
+  /// Whether titles should open straight in the VR cinema: the setting, or the app
+  /// having been started as a VR program by the launcher.
+  bool get _vrAutoEnter =>
+      XrCinemaService.isSupported &&
+      (XrCinemaService.launchedForVr || SettingsService.instance.read(SettingsService.vrAutoEnter));
+
+  /// Called when the first frame is up. Opens the cinema once per screen, never for live TV.
+  void _maybeAutoEnterVrCinema() {
+    if (!_vrAutoEnter || _vrAutoEntered || widget.isLive || _vrSession != null) return;
+    _vrAutoEntered = true;
+    unawaited(_enterVrCinema(leaveWhenDone: true));
+  }
+
   /// Hands the current stream to the VR cinema helper (Steam Frame and other
   /// OpenXR headsets), pauses flat playback while it runs and resumes it where
   /// the headset left off.
-  Future<void> _enterVrCinema() async {
+  Future<void> _enterVrCinema({bool leaveWhenDone = false}) async {
     final currentPlayer = player;
     final media = _lastOpenedMedia;
     if (_vrSession != null || currentPlayer == null || media == null || !mounted) return;
@@ -84,6 +97,12 @@ extension _VideoPlayerVrCinemaMethods on VideoPlayerScreenState {
     if (livePlayer == null) return;
     if (last != null) await livePlayer.seek(last.position);
     if (!mounted) return;
+    if (leaveWhenDone && failure == null) {
+      // Started straight into VR: leaving the headset means done watching, so go back to the library.
+      await _handleBackButton();
+      return;
+    }
+    if (!mounted) return;
     if (failure != null) {
       showErrorSnackBar(context, t.videoControls.vrCinemaFailed(message: failure!));
     }
@@ -108,7 +127,11 @@ extension _VideoPlayerVrCinemaMethods on VideoPlayerScreenState {
         : null;
     final fileName = version?.parts.map((p) => p.file).whereType<String>().firstOrNull;
     // File name first: it carries the frame packing, a bare title rarely does.
-    return resolveStereo3d(container: container, name: fileName ?? widget.metadata.displayTitle);
+    return resolveStereo3d(
+      container: container,
+      name: [fileName, widget.metadata.displayTitle].whereType<String>().join(' '),
+      guessFromBare3dTag: true,
+    );
   }
 
   Future<void> _stopVrCinemaOnDispose() async {

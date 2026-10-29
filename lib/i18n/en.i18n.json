@@ -274,6 +274,8 @@
     "vrEnvironmentSpaceDescription": "A starfield around a wide curved screen",
     "vrEnvironmentPassthrough": "Passthrough",
     "vrEnvironmentPassthroughDescription": "Float the screen over your real room (needs headset passthrough)",
+    "vrAutoEnter": "Always watch in VR",
+    "vrAutoEnterDescription": "Open the VR cinema as soon as a title starts, and return here when you leave VR",
     "vrAutoDetect3d": "Detect 3D movies",
     "vrAutoDetect3dDescription": "Show side-by-side and top-bottom 3D files in 3D, using the file's metadata or name",
     "playbackBuffer": "Playback Buffer",

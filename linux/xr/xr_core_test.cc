@@ -110,7 +110,10 @@ int main() {
     CHECK(ParseCommand("layout topBottomHalf").type == CommandType::kLayout);
     CHECK(ParseCommand("rm -rf /").type == CommandType::kInvalid);
     CHECK(ParseCommand("").type == CommandType::kInvalid);
-    CHECK(FormatPosition(1.5, 60, true, "void", "none") == "position 1.500 60.000 1 void none");
+    CHECK(FormatPosition(1.5, 60, true, "void", "none") == "position 1.500 60.000 1 void none no 0");
+    CHECK(
+        FormatPosition(1.5, 60, false, "cinema", "sideBySideHalf", "v4l2m2m-copy", 12) ==
+        "position 1.500 60.000 0 cinema sideBySideHalf v4l2m2m-copy 12");
     CHECK(FormatError("a\nb").find('\n') == std::string::npos);
   }
 

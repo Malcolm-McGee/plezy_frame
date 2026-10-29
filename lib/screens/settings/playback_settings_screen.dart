@@ -83,7 +83,10 @@ class PlaybackSettingsScreen extends StatelessWidget {
             // Shown only where the plezy-xr helper is installed (Linux builds
             // with OpenXR, e.g. Steam Frame).
             if (XrCinemaService.isSupported)
-              SettingsGroup(title: t.settings.vrCinema, children: [_vrEnvironmentTile(), _vrAutoDetect3dTile()]),
+              SettingsGroup(
+                title: t.settings.vrCinema,
+                children: [_vrEnvironmentTile(), _vrAutoEnterTile(), _vrAutoDetect3dTile()],
+              ),
 
             SettingsGroup(
               title: t.settings.videoAndDisplay,
@@ -451,6 +454,13 @@ class PlaybackSettingsScreen extends StatelessWidget {
         destinationBuilder: (_) => const ExternalPlayerScreen(),
       );
     },
+  );
+
+  Widget _vrAutoEnterTile() => SettingSwitchTile(
+    pref: SettingsService.vrAutoEnter,
+    icon: Symbols.view_in_ar_rounded,
+    title: t.settings.vrAutoEnter,
+    subtitle: t.settings.vrAutoEnterDescription,
   );
 
   Widget _vrAutoDetect3dTile() => SettingSwitchTile(

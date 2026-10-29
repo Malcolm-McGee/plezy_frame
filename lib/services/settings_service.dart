@@ -666,6 +666,9 @@ class SettingsService extends BaseSharedPreferencesService {
   /// Pick the 3D packing from container metadata and the file name when the VR
   /// cinema opens a title. Off plays everything flat until chosen in VR.
   static const vrAutoDetect3d = BoolPref('vr_auto_detect_3d', defaultValue: true);
+
+  /// Open the VR cinema as soon as a title starts playing, instead of waiting for the button.
+  static const vrAutoEnter = BoolPref('vr_auto_enter');
   static const viewMode = EnumPref<ViewMode>('view_mode', values: ViewMode.values, defaultValue: ViewMode.grid);
   static const seekTimeSmall = IntPref('seek_time_small', defaultValue: 10);
   static const seekTimeLarge = IntPref('seek_time_large', defaultValue: 30);
@@ -1498,6 +1501,7 @@ class SettingsService extends BaseSharedPreferencesService {
     hdrToneMapping,
     vrEnvironment,
     vrAutoDetect3d,
+    vrAutoEnter,
     viewMode,
     seekTimeSmall,
     seekTimeLarge,

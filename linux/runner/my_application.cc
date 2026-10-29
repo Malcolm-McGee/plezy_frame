@@ -97,6 +97,13 @@ static void my_application_activate(GApplication* application) {
       fl_plugin_registry_get_registrar_for_plugin(FL_PLUGIN_REGISTRY(self->flutter_view), "MpvAudioPlugin");
   mpv_audio_plugin_register_with_registrar(audio_registrar);
 
+  // Started as a VR program (plezy-steamos.sh sets PLEZY_VR=1): there is no desktop to share the screen with,
+  // so open fullscreen and borderless instead of as a 1280x720 window.
+  if (g_strcmp0(g_getenv("PLEZY_VR"), "1") == 0) {
+    gtk_window_set_decorated(window, FALSE);
+    gtk_window_fullscreen(window);
+  }
+
   gtk_widget_show(GTK_WIDGET(window));
   gtk_widget_grab_focus(GTK_WIDGET(self->flutter_view));
 }

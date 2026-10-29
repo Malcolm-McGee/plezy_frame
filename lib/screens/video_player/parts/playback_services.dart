@@ -103,6 +103,7 @@ extension _VideoPlayerPlaybackServiceMethods on VideoPlayerScreenState {
     if (stale()) return;
 
     _firstFrame.markReady();
+    _maybeAutoEnterVrCinema();
     // This request is proven: a later in-place switch that fails restores it.
     _workingOpenRequest = _currentOpenRequest;
     _http503Watchdog.disarm();
