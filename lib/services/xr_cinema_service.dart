@@ -15,6 +15,10 @@ class XrCinemaRequest {
   final Stereo3dInfo stereo;
   final int? volume;
 
+  /// Whether the headset may use its hardware video decoder. False for sources that decoder cannot handle
+  /// (10-bit HEVC crashes its firmware), which are decoded in software instead.
+  final bool hardwareDecoding;
+
   const XrCinemaRequest({
     required this.url,
     this.headers = const {},
@@ -23,6 +27,7 @@ class XrCinemaRequest {
     this.environment = VrEnvironment.cinema,
     this.stereo = const Stereo3dInfo(Stereo3dLayout.none),
     this.volume,
+    this.hardwareDecoding = true,
   });
 }
 
@@ -72,9 +77,44 @@ class XrCinemaExited extends XrCinemaEvent {
   const XrCinemaExited();
 }
 
+/// A tile in the VR menu was picked (menu mode).
+class XrCinemaSelected extends XrCinemaEvent {
+  final String id;
+  const XrCinemaSelected(this.id);
+}
+
+/// The back button, or the controller's menu button on a screen that can go back (menu mode).
+class XrCinemaBack extends XrCinemaEvent {
+  const XrCinemaBack();
+}
+
+/// The viewer stopped playback from inside the headset and is back at the menu (menu mode).
+class XrCinemaStopped extends XrCinemaEvent {
+  const XrCinemaStopped();
+}
+
+/// One poster tile of a VR menu screen.
+class XrMenuTile {
+  final String id;
+  final String title;
+  final String subtitle;
+
+  /// Path of a downloaded JPEG/PNG poster, or empty for a placeholder.
+  final String imagePath;
+
+  const XrMenuTile({required this.id, required this.title, this.subtitle = '', this.imagePath = ''});
+}
+
+/// Protocol fields are tab-separated and line-based, so neither may appear inside one.
+String xrProtocolField(String value) => value.replaceAll(RegExp(r'[\t\r\n]+'), ' ').trim();
+
 /// Parses one helper stdout line; null for anything unrecognised so a newer
 /// helper's extra events never break an older app.
 XrCinemaEvent? parseXrCinemaEvent(String line) {
+  if (line.startsWith('select\t')) {
+    final id = line.substring('select\t'.length).trimRight();
+    return id.isEmpty ? null : XrCinemaSelected(id);
+  }
   final trimmed = line.trim();
   if (trimmed.isEmpty) return null;
   final space = trimmed.indexOf(' ');
@@ -87,6 +127,10 @@ XrCinemaEvent? parseXrCinemaEvent(String line) {
       return const XrCinemaEnded();
     case 'exit':
       return const XrCinemaExited();
+    case 'back':
+      return const XrCinemaBack();
+    case 'stopped':
+      return const XrCinemaStopped();
     case 'error':
       return XrCinemaError(rest.isEmpty ? 'unknown error' : rest);
     case 'position':
@@ -125,6 +169,9 @@ List<String> buildXrCinemaArguments(XrCinemaRequest request) => [
   if (request.title.isNotEmpty) ...['--title', request.title],
 ];
 
+/// Command-line arguments for the helper's menu mode (no stream yet).
+List<String> buildXrMenuArguments({required VrEnvironment environment}) => ['--menu', '--env', environment.wireName];
+
 /// Locates the helper: an explicit override, else beside the app executable
 /// (where the bundle installs it). Pure so it can be tested.
 String? resolveXrHelperPath({
@@ -146,19 +193,27 @@ String? resolveXrHelperPath({
 /// leaves the headset or the stream finishes.
 class XrCinemaSession {
   final Process _process;
+  final IOSink? _log;
   final StreamController<XrCinemaEvent> _events = StreamController<XrCinemaEvent>.broadcast();
   XrCinemaPosition? _lastPosition;
   bool _closed = false;
 
-  XrCinemaSession._(this._process) {
+  XrCinemaSession._(this._process, this._log) {
+    // ignore: prefer_initializing_formals
     _process.stdout.transform(utf8.decoder).transform(const LineSplitter()).listen((line) {
+      // Position lines arrive twice a second; keep the log to everything else.
+      if (!line.startsWith('position ')) _log?.writeln('[event] $line');
       final event = parseXrCinemaEvent(line);
       if (event == null) return;
       if (event is XrCinemaPosition) _lastPosition = event;
       if (!_events.isClosed) _events.add(event);
     }, onDone: _finish);
-    // The helper logs diagnostics to stderr; drain it so it can never block.
-    _process.stderr.drain<void>();
+    // The helper logs diagnostics to stderr; keep them in the log file, which also stops the pipe filling up.
+    _process.stderr.transform(utf8.decoder).listen((text) => _log?.write(text));
+    _process.exitCode.then((code) {
+      _log?.writeln('[exit] helper exited with code $code');
+      return _log?.flush().whenComplete(() => _log.close());
+    });
   }
 
   Stream<XrCinemaEvent> get events => _events.stream;
@@ -186,6 +241,40 @@ class XrCinemaSession {
       // The helper is already gone; exit handling will report it.
     }
   }
+
+  /// Menu mode: replace the menu with a screen of poster tiles.
+  void showScreen({required String title, required bool canGoBack, required List<XrMenuTile> tiles}) {
+    send('ui.begin\t${xrProtocolField(title)}\t${canGoBack ? 1 : 0}');
+    for (final tile in tiles) {
+      send(
+        'ui.tile\t${xrProtocolField(tile.id)}\t${xrProtocolField(tile.title)}\t${xrProtocolField(tile.subtitle)}'
+        '\t${xrProtocolField(tile.imagePath)}',
+      );
+    }
+    send('ui.end');
+    // Testing aid: PLEZY_XR_DUMP_UI=/path/menu.png writes each screen to a PNG for inspection without a headset.
+    final dump = Platform.environment['PLEZY_XR_DUMP_UI'];
+    if (dump != null && dump.isNotEmpty) send('ui.dump\t${xrProtocolField(dump)}');
+  }
+
+  /// Menu mode: show a message ("Loading...") in place of the tiles.
+  void showMessage(String message) => send('ui.status\t${xrProtocolField(message)}');
+
+  /// Menu mode: play [request] on the cinema screen, replacing whatever is playing.
+  void play(XrCinemaRequest request) {
+    send('layout ${request.stereo.layout.wireName}');
+    send('hwdec ${request.hardwareDecoding ? 'auto' : 'software'}');
+    if (request.stereo.swapEyes) send('swap');
+    if (request.volume != null) send('volume ${request.volume!.clamp(0, 100)}');
+    for (final entry in request.headers.entries) {
+      send('header ${xrProtocolField('${entry.key}: ${entry.value}')}');
+    }
+    if (request.start > Duration.zero) send('start ${(request.start.inMilliseconds / 1000).toStringAsFixed(3)}');
+    send('load ${request.url}');
+  }
+
+  /// Menu mode: stop playback and return to the menu.
+  void stopPlayback() => send('stop');
 
   void setEnvironment(VrEnvironment environment) => send('env ${environment.wireName}');
   void setLayout(Stereo3dLayout layout) => send('layout ${layout.wireName}');
@@ -221,12 +310,40 @@ class XrCinemaService {
       ? resolveXrHelperPath(resolvedExecutable: Platform.resolvedExecutable, environment: Platform.environment)
       : null;
 
+  /// Where the helper's output for the latest session is kept.
+  static String get logPath {
+    final state = Platform.environment['XDG_STATE_HOME'];
+    final base = (state != null && state.isNotEmpty) ? state : '${Platform.environment['HOME'] ?? '.'}/.local/state';
+    return '$base/plezy-xr.log';
+  }
+
+  static IOSink? _openLog() {
+    try {
+      final file = File(logPath)..parent.createSync(recursive: true);
+      final sink = file.openWrite();
+      sink.writeln('[start] ${DateTime.now().toIso8601String()}');
+      return sink;
+    } on Object {
+      return null; // a log that cannot be written must not stop the cinema
+    }
+  }
+
+  /// Starts the helper in menu mode: it opens the headset session straight away and waits for screens
+  /// and streams. Throws [StateError] when it is not installed.
+  static Future<XrCinemaSession> launchMenu({required VrEnvironment environment, XrProcessStarter? starter}) async {
+    final path = helperPath;
+    if (path == null && starter == null) throw StateError('The VR cinema helper (plezy-xr) is not installed');
+    final start = starter ?? (exe, args) => Process.start(exe, args);
+    final process = await start(path ?? 'plezy-xr', buildXrMenuArguments(environment: environment));
+    return XrCinemaSession._(process, starter == null ? _openLog() : null);
+  }
+
   /// Starts the helper. Throws [StateError] when it is not installed.
   static Future<XrCinemaSession> launch(XrCinemaRequest request, {XrProcessStarter? starter}) async {
     final path = helperPath;
     if (path == null && starter == null) throw StateError('The VR cinema helper (plezy-xr) is not installed');
     final start = starter ?? (exe, args) => Process.start(exe, args);
     final process = await start(path ?? 'plezy-xr', buildXrCinemaArguments(request));
-    return XrCinemaSession._(process);
+    return XrCinemaSession._(process, starter == null ? _openLog() : null);
   }
 }

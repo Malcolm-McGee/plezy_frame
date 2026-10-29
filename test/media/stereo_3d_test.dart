@@ -55,6 +55,24 @@ void main() {
     expect(detectStereo3dFromName('Avatar 3D FSBS', guessFromBare3dTag: true), Stereo3dLayout.sideBySideFull);
     expect(detectStereo3dFromName('Avatar 2009.mkv', guessFromBare3dTag: true), Stereo3dLayout.none);
     expect(resolveStereo3d(name: 'Movie 3D', guessFromBare3dTag: true).layout, Stereo3dLayout.sideBySideHalf);
+    // The frame's shape refines the guess.
+    expect(
+      detectStereo3dFromName('Movie 3D', guessFromBare3dTag: true, frameWidth: 3840, frameHeight: 1080),
+      Stereo3dLayout.sideBySideFull,
+    );
+    expect(
+      detectStereo3dFromName('Movie 3D', guessFromBare3dTag: true, frameWidth: 1920, frameHeight: 2160),
+      Stereo3dLayout.topBottomFull,
+    );
+    expect(
+      detectStereo3dFromName('Movie 3D', guessFromBare3dTag: true, frameWidth: 1920, frameHeight: 1080),
+      Stereo3dLayout.sideBySideHalf,
+    );
+    // A library named "3d movies" is a hint too.
+    expect(
+      detectStereo3dFromName('Some Film (2010) 3d movies', guessFromBare3dTag: true),
+      Stereo3dLayout.sideBySideHalf,
+    );
   });
 
   test('resolveStereo3d prefers override, then container, then name', () {

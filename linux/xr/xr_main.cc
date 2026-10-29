@@ -39,6 +39,7 @@
 #include "environment.h"
 #include "screen_geometry.h"
 #include "stereo_layout.h"
+#include "ui_panel.h"
 #include "xr_math.h"
 #include "xr_protocol.h"
 
@@ -58,6 +59,11 @@ struct Options {
   // mpv's --hwdec value. The default tries the Snapdragon's V4L2 decoder first and
   // falls back to whatever mpv thinks is safe; "no" forces software decoding.
   std::string hwdec = "v4l2m2m-copy,auto-safe";
+  std::string hwdec_codecs = "h264,hevc";  // codecs allowed to use hardware decoding
+  // Debug: render a demo menu to this PNG and exit (needs no headset).
+  bool menu = false;  // start with the library menu instead of a stream
+  std::string dump_ui;
+  std::string demo_images;  // directory of poster-N.jpg files for the demo
 };
 
 void Emit(const std::string& line) {
@@ -170,7 +176,7 @@ uniform float u_linear;
 out vec4 o_color;
 void main() {
   vec2 uv = mix(u_eye_rect.xy, u_eye_rect.zw, v_uv);
-  vec3 c = textureLod(u_video, uv, 0.0).rgb;
+  vec3 c = texture(u_video, uv).rgb;
   if (u_linear > 0.5) c = pow(c, vec3(2.2));
   o_color = vec4(c, 1.0);
 })";
@@ -305,6 +311,10 @@ class VideoPlayer {
     }
     mpv_set_option_string(mpv_, "vo", "libmpv");
     mpv_set_option_string(mpv_, "hwdec", opt.hwdec.c_str());
+    // The Snapdragon's V4L2 decoder handles H.264 and 8-bit HEVC; its 10-bit HEVC path reports "driver decode
+    // error" and crashes the chip's firmware. The app knows each film's bit depth and sends `hwdec software`
+    // for those, so this list only names the codecs hardware may be offered at all.
+    mpv_set_option_string(mpv_, "hwdec-codecs", opt.hwdec_codecs.c_str());
     mpv_set_option_string(mpv_, "keep-open", "no");
     mpv_set_option_string(mpv_, "audio-client-name", "Plezy VR");
     mpv_set_option_string(mpv_, "terminal", "no");
@@ -340,12 +350,14 @@ class VideoPlayer {
       *error = "mpv: initialisation failed";
       return false;
     }
+    mpv_request_log_messages(mpv_, "warn");
     mpv_observe_property(mpv_, 0, "duration", MPV_FORMAT_DOUBLE);
     mpv_observe_property(mpv_, 0, "time-pos", MPV_FORMAT_DOUBLE);
     mpv_observe_property(mpv_, 0, "pause", MPV_FORMAT_FLAG);
     mpv_observe_property(mpv_, 0, "video-params/w", MPV_FORMAT_INT64);
     mpv_observe_property(mpv_, 0, "video-params/h", MPV_FORMAT_INT64);
     mpv_observe_property(mpv_, 0, "hwdec-current", MPV_FORMAT_STRING);
+    mpv_observe_property(mpv_, 0, "paused-for-cache", MPV_FORMAT_FLAG);
     mpv_observe_property(mpv_, 0, "frame-drop-count", MPV_FORMAT_INT64);
     mpv_observe_property(mpv_, 0, "decoder-frame-drop-count", MPV_FORMAT_INT64);
 
@@ -362,12 +374,88 @@ class VideoPlayer {
     mpv_render_context_set_update_callback(
         render_, [](void* ctx) { static_cast<std::atomic<bool>*>(ctx)->store(true); }, &frame_ready_);
 
-    const char* cmd[] = {"loadfile", opt.url.c_str(), nullptr};
-    if (mpv_command(mpv_, cmd) < 0) {
-      *error = "mpv: could not queue the stream";
-      return false;
+    hwdec_setting_ = opt.hwdec;
+    active_hwdec_ = opt.hwdec;
+    if (!opt.url.empty()) {
+      const char* cmd[] = {"loadfile", opt.url.c_str(), nullptr};
+      if (mpv_command(mpv_, cmd) < 0) {
+        *error = "mpv: could not queue the stream";
+        return false;
+      }
+      current_url_ = opt.url;
+      MarkLoading();
     }
     return true;
+  }
+
+  // Starts a stream, replacing whatever is playing.
+  void Load(const std::string& url, const std::vector<std::string>& headers, double start, bool hardware) {
+    if (!mpv_) return;
+    if (loaded_) ++ignored_end_files_;  // replacing a file ends the old one; that is not "playback finished"
+    current_url_ = url;
+    current_headers_ = headers;
+    software_fallback_done_ = false;
+    // Software for this film when the app says so; otherwise the configured hardware-first list.
+    active_hwdec_ = hardware ? hwdec_setting_ : "no";
+    mpv_set_property_string(mpv_, "hwdec", active_hwdec_.c_str());
+    StartLoad(start);
+  }
+
+  // Stops playback and clears the picture.
+  void Stop() {
+    if (!mpv_) return;
+    if (loaded_) {
+      ++ignored_end_files_;
+      const char* cmd[] = {"stop", nullptr};
+      mpv_command_async(mpv_, 0, cmd);
+    }
+    loaded_ = false;
+    tex_w_ = tex_h_ = video_w_ = video_h_ = 0;
+    position_ = duration_ = 0;
+    paused_ = false;
+  }
+
+  bool loaded() const { return loaded_; }
+  int frames_drawn() const { return frames_drawn_; }
+  float last_render_ms() const { return render_ms_; }
+  float last_mipmap_ms() const { return mipmap_ms_; }
+
+  // True when the chosen decoder is not working out and software decoding should take over: nothing was
+  // drawn long after loading, or the hardware decoder is dropping frames steadily.
+  bool NeedsSoftwareFallback() {
+    if (!loaded_ || software_fallback_done_ || active_hwdec_ == "no") return false;
+    const auto now = Clock::now();
+    // The decoder is reporting errors repeatedly, or the picture never starts.
+    if (hw_errors_ >= 3 && hwdec_current_ != "no") return true;
+    if (frames_drawn_ == 0 && now - load_started_ > std::chrono::seconds(12)) return true;
+    // Hardware decoding is on but playback has stopped advancing (the decoder is wedged, not the network).
+    if (hwdec_current_ != "no" && !paused_ && now - std::max(load_started_, last_progress_) > std::chrono::seconds(8) &&
+        now - load_started_ > std::chrono::seconds(8)) {
+      return true;
+    }
+    if (frames_drawn_ > 0 && hwdec_current_ != "no" && now - drop_window_start_ > std::chrono::seconds(10)) {
+      // Only frames the decoder itself dropped count: display drops and stalls from a slow network or server
+      // say nothing about the hardware decoder, and software would not help.
+      const long long dropped_now = decoder_drops_;
+      const bool bad = dropped_now - drops_at_window_start_ > 60;
+      drop_window_start_ = now;
+      drops_at_window_start_ = dropped_now;
+      return bad;
+    }
+    return false;
+  }
+
+  // Reloads the current stream at the current position with software decoding.
+  void FallBackToSoftware() {
+    if (!mpv_ || !loaded_) return;
+    std::fprintf(
+        stderr, "[xr] switching to software decoding at %.1fs (hwdec was '%s', %lld dropped, %d frames)\n", position_,
+        hwdec_current_.c_str(), dropped(), frames_drawn_);
+    software_fallback_done_ = true;
+    active_hwdec_ = "no";
+    ++ignored_end_files_;
+    mpv_set_property_string(mpv_, "hwdec", "no");
+    StartLoad(position_);
   }
 
   void Shutdown() {
@@ -394,9 +482,15 @@ class VideoPlayer {
         auto* p = static_cast<mpv_event_property*>(e->data);
         if (p->format == MPV_FORMAT_DOUBLE && p->data) {
           if (!std::strcmp(p->name, "duration")) duration_ = *static_cast<double*>(p->data);
-          if (!std::strcmp(p->name, "time-pos")) position_ = *static_cast<double*>(p->data);
+          if (!std::strcmp(p->name, "time-pos")) {
+            const double pos = *static_cast<double*>(p->data);
+            if (std::fabs(pos - position_) > 0.01) last_progress_ = Clock::now();
+            position_ = pos;
+          }
         } else if (p->format == MPV_FORMAT_FLAG && p->data && !std::strcmp(p->name, "pause")) {
           paused_ = *static_cast<int*>(p->data) != 0;
+        } else if (p->format == MPV_FORMAT_FLAG && p->data && !std::strcmp(p->name, "paused-for-cache")) {
+          buffering_ = *static_cast<int*>(p->data) != 0;
         } else if (p->format == MPV_FORMAT_INT64 && p->data) {
           const int64_t v = *static_cast<int64_t*>(p->data);
           if (!std::strcmp(p->name, "video-params/w")) video_w_ = static_cast<int>(v);
@@ -406,9 +500,31 @@ class VideoPlayer {
         } else if (p->format == MPV_FORMAT_STRING && p->data && !std::strcmp(p->name, "hwdec-current")) {
           hwdec_current_ = *static_cast<char**>(p->data);
         }
+      } else if (e->event_id == MPV_EVENT_FILE_LOADED) {
+        // What is actually being played: the first thing to know when a film stutters.
+        auto prop = [&](const char* name) {
+          char* v = mpv_get_property_string(mpv_, name);
+          std::string out = v ? v : "?";
+          if (v) mpv_free(v);
+          return out;
+        };
+        std::fprintf(
+            stderr, "[xr] media: %s %sx%s %s, %s fps, container %s, hwdec setting '%s'\n", prop("video-codec").c_str(),
+            prop("video-params/w").c_str(), prop("video-params/h").c_str(), prop("video-params/pixelformat").c_str(),
+            prop("container-fps").c_str(), prop("file-format").c_str(), active_hwdec_.c_str());
+      } else if (e->event_id == MPV_EVENT_LOG_MESSAGE) {
+        auto* m = static_cast<mpv_event_log_message*>(e->data);
+        std::fprintf(stderr, "[mpv:%s] %s", m->prefix, m->text);
+        // A hardware decoder that keeps failing will never produce a picture.
+        if (std::strstr(m->text, "v4l2m2m") && std::strstr(m->text, "error")) ++hw_errors_;
       } else if (e->event_id == MPV_EVENT_END_FILE) {
         auto* ef = static_cast<mpv_event_end_file*>(e->data);
+        if (ignored_end_files_ > 0 && ef->reason == MPV_END_FILE_REASON_STOP) {
+          --ignored_end_files_;  // our own stop / replace, not the end of the film
+          continue;
+        }
         if (ef->reason == MPV_END_FILE_REASON_ERROR) *error = std::string("mpv: ") + mpv_error_string(ef->error);
+        loaded_ = false;
         ended = true;
       } else if (e->event_id == MPV_EVENT_SHUTDOWN) {
         ended = true;
@@ -422,11 +538,20 @@ class VideoPlayer {
     if (!render_ || video_w_ < 1 || video_h_ < 1) return;
     const bool resized = video_w_ != tex_w_ || video_h_ != tex_h_;
     if (resized) {
-      if (!tex_) glGenTextures(1, &tex_);
+      // Immutable storage cannot be resized, so a new picture size means a new texture. The full mip chain
+      // lets the headset sample the screen smoothly (trilinear) instead of shimmering when it is minified.
+      if (tex_) glDeleteTextures(1, &tex_);
+      glGenTextures(1, &tex_);
       glBindTexture(GL_TEXTURE_2D, tex_);
-      glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, video_w_, video_h_, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
-      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+      int levels = 1;
+      for (int dim = std::max(video_w_, video_h_); dim > 1; dim >>= 1) ++levels;
+      glTexStorage2D(GL_TEXTURE_2D, levels, GL_RGBA8, video_w_, video_h_);
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
       glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+      const char* exts = reinterpret_cast<const char*>(glGetString(GL_EXTENSIONS));
+      if (exts && std::strstr(exts, "GL_EXT_texture_filter_anisotropic")) {
+        glTexParameterf(GL_TEXTURE_2D, 0x84FE /* GL_TEXTURE_MAX_ANISOTROPY_EXT */, 8.f);
+      }
       glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
       glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
       if (!fbo_) glGenFramebuffers(1, &fbo_);
@@ -441,15 +566,29 @@ class VideoPlayer {
     // flip_y = 0: row 0 of the texture is the top of the picture, matching the
     // v = 0 at the top convention the screen mesh samples with.
     int flip_y = 0;
+    // By default the render call sleeps until the frame's scheduled display time. That suits a window that
+    // renders once per video frame, but here it would freeze the whole headset loop for up to a frame
+    // interval, so render immediately and let the loop show the result at its next refresh.
+    int block_for_target_time = 0;
     mpv_render_param params[] = {
         {MPV_RENDER_PARAM_OPENGL_FBO, &fbo},
         {MPV_RENDER_PARAM_FLIP_Y, &flip_y},
+        {MPV_RENDER_PARAM_BLOCK_FOR_TARGET_TIME, &block_for_target_time},
         {MPV_RENDER_PARAM_INVALID, nullptr},
     };
+    const bool profile = std::getenv("PLEZY_XR_PROFILE") != nullptr;
+    const auto t0 = Clock::now();
     mpv_render_context_render(render_, params);
+    if (profile) glFinish();
+    render_ms_ = std::chrono::duration<float, std::milli>(Clock::now() - t0).count();
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    // The ambient light samples the smallest mip as the screen's mean colour.
+    // Rebuild the mip chain for the new frame; the smallest level is also the screen's average colour.
     glBindTexture(GL_TEXTURE_2D, tex_);
+    const auto t1 = Clock::now();
+    glGenerateMipmap(GL_TEXTURE_2D);
+    if (profile) glFinish();
+    mipmap_ms_ = std::chrono::duration<float, std::milli>(Clock::now() - t1).count();
+    ++frames_drawn_;
   }
 
   void Apply(const xr::Command& c) {
@@ -499,10 +638,55 @@ class VideoPlayer {
   double position() const { return position_; }
   double duration() const { return duration_; }
   bool paused() const { return paused_; }
+  bool buffering() const { return buffering_; }
   const std::string& hwdec() const { return hwdec_current_; }
   long long dropped() const { return display_drops_ + decoder_drops_; }
 
  private:
+  void MarkLoading() {
+    loaded_ = true;
+    load_started_ = Clock::now();
+    drop_window_start_ = load_started_;
+    drops_at_window_start_ = 0;
+    last_progress_ = load_started_;
+    hw_errors_ = 0;
+    frames_drawn_ = 0;
+    display_drops_ = decoder_drops_ = 0;
+  }
+
+  // loadfile for the current stream, starting [start] seconds in, with its HTTP headers.
+  void StartLoad(double start) {
+    std::vector<mpv_node> items(current_headers_.size());
+    for (size_t i = 0; i < current_headers_.size(); ++i) {
+      items[i].format = MPV_FORMAT_STRING;
+      items[i].u.string = const_cast<char*>(current_headers_[i].c_str());
+    }
+    mpv_node_list list{static_cast<int>(items.size()), items.empty() ? nullptr : items.data(), nullptr};
+    mpv_node node{};
+    node.format = MPV_FORMAT_NODE_ARRAY;
+    node.u.list = &list;
+    mpv_set_property(mpv_, "http-header-fields", MPV_FORMAT_NODE, &node);
+    char start_text[32];
+    std::snprintf(start_text, sizeof start_text, "%.3f", start > 0.5 ? start : 0.0);
+    mpv_set_property_string(mpv_, "start", start_text);
+    const char* cmd[] = {"loadfile", current_url_.c_str(), nullptr};
+    mpv_command_async(mpv_, 0, cmd);
+    MarkLoading();
+    video_w_ = video_h_ = tex_w_ = 0;  // wait for the new file's size before drawing it
+  }
+
+  float render_ms_ = 0, mipmap_ms_ = 0;
+  Clock::time_point last_progress_{};
+  int hw_errors_ = 0;
+  std::string current_url_;
+  std::vector<std::string> current_headers_;
+  std::string hwdec_setting_;
+  std::string active_hwdec_ = "no";  // what the current film was started with
+  bool loaded_ = false, software_fallback_done_ = false;
+  int ignored_end_files_ = 0;
+  int frames_drawn_ = 0;
+  Clock::time_point load_started_{}, drop_window_start_{};
+  long long drops_at_window_start_ = 0;
   std::string hwdec_current_ = "no";
   int64_t display_drops_ = 0, decoder_drops_ = 0;
   mpv_handle* mpv_ = nullptr;
@@ -512,6 +696,7 @@ class VideoPlayer {
   int tex_w_ = 0, tex_h_ = 0, video_w_ = 0, video_h_ = 0;
   double position_ = 0, duration_ = 0;
   bool paused_ = false;
+  bool buffering_ = false;
 };
 
 // ----------------------------------------------------------------- OpenXR --
@@ -532,6 +717,9 @@ struct EyeSwapchain {
   int32_t width = 0, height = 0;
   std::vector<XrSwapchainImageOpenGLESKHR> images;
   std::vector<GLuint> fbos;
+  // Multisampled render target; each frame is drawn here and resolved into the swapchain image.
+  GLuint msaa_fbo = 0, msaa_rb = 0;
+  int samples = 0;
 };
 
 class XrApp {
@@ -541,6 +729,7 @@ class XrApp {
     env_ = &xr::EnvironmentByWireName(opt.environment);
     layout_ = xr::StereoLayoutFromWireName(opt.layout);
     swap_eyes_ = opt.swap_eyes;
+    menu_mode_ = opt.menu;
   }
 
   bool Init(std::string* error) {
@@ -612,13 +801,24 @@ class XrApp {
     while (!exit_) {
       std::string video_error;
       if (video_->PumpEvents(&video_error)) {
-        if (!video_error.empty()) {
-          *error = video_error;
-          return false;
+        if (menu_mode_) {
+          // The film finished (or failed): tell the app and go back to the menu; the session stays up.
+          if (!video_error.empty()) {
+            std::fprintf(stderr, "[xr] playback failed: %s\n", video_error.c_str());
+            Emit(xr::FormatError(video_error));
+          }
+          Emit("ended");
+          ResetPlaybackState();
+        } else {
+          if (!video_error.empty()) {
+            *error = video_error;
+            return false;
+          }
+          Emit("ended");
+          break;
         }
-        Emit("ended");
-        break;
       }
+      if (video_->NeedsSoftwareFallback()) video_->FallBackToSoftware();
       xr::Command c;
       while (commands_->Pop(&c)) HandleCommand(c);
       PollEvents();
@@ -643,6 +843,9 @@ class XrApp {
       for (GLuint f : eye.fbos) glDeleteFramebuffers(1, &f);
       if (eye.handle) xrDestroySwapchain(eye.handle);
     }
+    for (XrSpace& space : aim_space_)
+      if (space) xrDestroySpace(space);
+    panel_.Shutdown();
     if (actions_.set) xrDestroyActionSet(actions_.set);
     if (view_space_) xrDestroySpace(view_space_);
     if (local_space_) xrDestroySpace(local_space_);
@@ -655,7 +858,8 @@ class XrApp {
   struct Actions {
     XrActionSet set = XR_NULL_HANDLE;
     XrAction toggle = XR_NULL_HANDLE, cycle_env = XR_NULL_HANDLE, cycle_layout = XR_NULL_HANDLE,
-             recenter = XR_NULL_HANDLE, quit = XR_NULL_HANDLE, stick = XR_NULL_HANDLE;
+             recenter = XR_NULL_HANDLE, quit = XR_NULL_HANDLE, stick = XR_NULL_HANDLE, toggle_left = XR_NULL_HANDLE,
+             aim_left = XR_NULL_HANDLE, aim_right = XR_NULL_HANDLE;
   };
 
   bool InitBlendModes(std::string* error) {
@@ -703,8 +907,23 @@ class XrApp {
 
     for (uint32_t i = 0; i < 2; ++i) {
       EyeSwapchain& eye = eyes_[i];
-      eye.width = static_cast<int32_t>(views[i].recommendedImageRectWidth);
-      eye.height = static_cast<int32_t>(views[i].recommendedImageRectHeight);
+      // Render a little above the runtime's recommended size (never above its maximum): the recommended
+      // size is tuned for 3D scenes, not for text and video edges, which look jagged at 1:1.
+      float scale = 1.25f;
+      if (const char* env_scale = std::getenv("PLEZY_XR_SCALE"))
+        scale = std::max(0.5f, std::min(2.0f, static_cast<float>(std::atof(env_scale))));
+      const uint32_t want_w = static_cast<uint32_t>(views[i].recommendedImageRectWidth * scale);
+      const uint32_t want_h = static_cast<uint32_t>(views[i].recommendedImageRectHeight * scale);
+      eye.width = static_cast<int32_t>(
+          std::min(want_w, std::max(views[i].maxImageRectWidth, views[i].recommendedImageRectWidth)));
+      eye.height = static_cast<int32_t>(
+          std::min(want_h, std::max(views[i].maxImageRectHeight, views[i].recommendedImageRectHeight)));
+      if (i == 0) {
+        std::fprintf(
+            stderr, "[xr] eye image %dx%d (runtime recommends %ux%u, max %ux%u, scale %.2f)\n", eye.width, eye.height,
+            views[i].recommendedImageRectWidth, views[i].recommendedImageRectHeight, views[i].maxImageRectWidth,
+            views[i].maxImageRectHeight, scale);
+      }
       XrSwapchainCreateInfo sc{XR_TYPE_SWAPCHAIN_CREATE_INFO};
       sc.usageFlags = XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT | XR_SWAPCHAIN_USAGE_SAMPLED_BIT;
       sc.format = chosen;
@@ -722,6 +941,32 @@ class XrApp {
           eye.handle, ic, &ic, reinterpret_cast<XrSwapchainImageBaseHeader*>(eye.images.data())));
       eye.fbos.assign(ic, 0);
       glGenFramebuffers(static_cast<GLsizei>(ic), eye.fbos.data());
+
+      // Multisampling smooths the edges of the screen and the menu; the format has to match the swapchain's
+      // for the resolve blit.
+      GLint max_samples = 0;
+      glGetIntegerv(GL_MAX_SAMPLES, &max_samples);
+      int want_samples = 4;
+      if (const char* env_msaa = std::getenv("PLEZY_XR_MSAA")) want_samples = std::atoi(env_msaa);
+      eye.samples = std::min(want_samples, static_cast<int>(max_samples));
+      if (eye.samples > 1) {
+        glGenRenderbuffers(1, &eye.msaa_rb);
+        glBindRenderbuffer(GL_RENDERBUFFER, eye.msaa_rb);
+        glRenderbufferStorageMultisample(
+            GL_RENDERBUFFER, eye.samples, static_cast<GLenum>(chosen), eye.width, eye.height);
+        glGenFramebuffers(1, &eye.msaa_fbo);
+        glBindFramebuffer(GL_FRAMEBUFFER, eye.msaa_fbo);
+        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, eye.msaa_rb);
+        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+          std::fprintf(stderr, "[xr] %dx multisampling is not available here; drawing without it\n", eye.samples);
+          eye.samples = 0;
+        }
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+      } else {
+        eye.samples = 0;
+      }
+      if (i == 0)
+        std::fprintf(stderr, "[xr] multisampling: %s\n", eye.samples > 1 ? std::to_string(eye.samples).c_str() : "off");
     }
     return true;
   }
@@ -753,6 +998,9 @@ class XrApp {
     actions_.recenter = MakeAction("recenter", XR_ACTION_TYPE_BOOLEAN_INPUT);
     actions_.quit = MakeAction("exit_cinema", XR_ACTION_TYPE_BOOLEAN_INPUT);
     actions_.stick = MakeAction("seek_volume", XR_ACTION_TYPE_VECTOR2F_INPUT);
+    actions_.toggle_left = MakeAction("select_left", XR_ACTION_TYPE_BOOLEAN_INPUT);
+    actions_.aim_left = MakeAction("point_left", XR_ACTION_TYPE_POSE_INPUT);
+    actions_.aim_right = MakeAction("point_right", XR_ACTION_TYPE_POSE_INPUT);
 
     // Suggest bindings for the common profiles; the runtime remaps for others
     // (Steam Frame controllers are rebindable from the SteamVR binding UI).
@@ -768,26 +1016,43 @@ class XrApp {
     suggest(
         "/interaction_profiles/khr/simple_controller", {{actions_.toggle, "/user/hand/right/input/select/click"},
                                                         {actions_.cycle_env, "/user/hand/left/input/select/click"},
-                                                        {actions_.quit, "/user/hand/right/input/menu/click"}});
+                                                        {actions_.quit, "/user/hand/right/input/menu/click"},
+                                                        {actions_.toggle_left, "/user/hand/left/input/select/click"},
+                                                        {actions_.aim_left, "/user/hand/left/input/aim/pose"},
+                                                        {actions_.aim_right, "/user/hand/right/input/aim/pose"}});
     suggest(
         "/interaction_profiles/oculus/touch_controller", {{actions_.toggle, "/user/hand/right/input/trigger/value"},
                                                           {actions_.cycle_env, "/user/hand/right/input/b/click"},
                                                           {actions_.cycle_layout, "/user/hand/right/input/a/click"},
                                                           {actions_.recenter, "/user/hand/left/input/thumbstick/click"},
                                                           {actions_.quit, "/user/hand/left/input/menu/click"},
-                                                          {actions_.stick, "/user/hand/right/input/thumbstick"}});
+                                                          {actions_.stick, "/user/hand/right/input/thumbstick"},
+                                                          {actions_.toggle_left, "/user/hand/left/input/trigger/value"},
+                                                          {actions_.aim_left, "/user/hand/left/input/aim/pose"},
+                                                          {actions_.aim_right, "/user/hand/right/input/aim/pose"}});
     suggest(
         "/interaction_profiles/valve/index_controller", {{actions_.toggle, "/user/hand/right/input/trigger/value"},
                                                          {actions_.cycle_env, "/user/hand/right/input/b/click"},
                                                          {actions_.cycle_layout, "/user/hand/right/input/a/click"},
                                                          {actions_.recenter, "/user/hand/left/input/thumbstick/click"},
                                                          {actions_.quit, "/user/hand/left/input/b/click"},
-                                                         {actions_.stick, "/user/hand/right/input/thumbstick"}});
+                                                         {actions_.stick, "/user/hand/right/input/thumbstick"},
+                                                         {actions_.toggle_left, "/user/hand/left/input/trigger/value"},
+                                                         {actions_.aim_left, "/user/hand/left/input/aim/pose"},
+                                                         {actions_.aim_right, "/user/hand/right/input/aim/pose"}});
 
     XrSessionActionSetsAttachInfo ai{XR_TYPE_SESSION_ACTION_SETS_ATTACH_INFO};
     ai.countActionSets = 1;
     ai.actionSets = &actions_.set;
     XR_TRY(xrAttachSessionActionSets(session_, &ai));
+
+    // Each controller's pointing pose, for aiming at the menu.
+    for (int hand = 0; hand < 2; ++hand) {
+      XrActionSpaceCreateInfo asci{XR_TYPE_ACTION_SPACE_CREATE_INFO};
+      asci.action = hand == 0 ? actions_.aim_left : actions_.aim_right;
+      asci.poseInActionSpace.orientation.w = 1.f;
+      XR_TRY(xrCreateActionSpace(session_, &asci, &aim_space_[hand]));
+    }
     return true;
   }
 
@@ -804,6 +1069,22 @@ class XrApp {
     glGenBuffers(1, &vbo_screen_);
     glGenVertexArrays(1, &vao_bar_);
     glGenBuffers(1, &vbo_bar_);
+
+    if (!panel_.Init(error)) return false;
+    // The menu: a flat quad in front of the viewer (anchor space), textured with the menu panel.
+    const float w = kMenuWidth, h = kMenuWidth * 9.f / 16.f, y = kMenuY, z = -kMenuDist;
+    const float quad[] = {-w / 2, y + h / 2, z, 0, 0, -w / 2, y - h / 2, z, 0, 1,
+                          w / 2,  y + h / 2, z, 1, 0, w / 2,  y - h / 2, z, 1, 1};
+    glGenVertexArrays(1, &vao_panel_);
+    glGenBuffers(1, &vbo_panel_);
+    glBindVertexArray(vao_panel_);
+    glBindBuffer(GL_ARRAY_BUFFER, vbo_panel_);
+    glBufferData(GL_ARRAY_BUFFER, sizeof quad, quad, GL_STATIC_DRAW);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), nullptr);
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), reinterpret_cast<void*>(3 * sizeof(float)));
+
     ApplyEnvironmentDefaults();
     return true;
   }
@@ -875,10 +1156,114 @@ class XrApp {
         layout_ = xr::StereoLayoutFromWireName(c.text);
         screen_dirty_ = true;
         break;
+      case xr::CommandType::kUiBegin:
+        panel_.BeginScreen(c.fields[0], c.fields[1] == "1");
+        break;
+      case xr::CommandType::kUiTile:
+        panel_.AddTile({c.fields[0], c.fields[1], c.fields[2], c.fields.size() > 3 ? c.fields[3] : ""});
+        break;
+      case xr::CommandType::kUiEnd:
+        panel_.EndScreen();
+        break;
+      case xr::CommandType::kUiStatus:
+        panel_.ShowMessage(c.fields[0]);
+        break;
+      case xr::CommandType::kUiDump:
+        if (!panel_.DumpPng(c.fields[0])) std::fprintf(stderr, "[xr] could not write %s\n", c.fields[0].c_str());
+        break;
+      case xr::CommandType::kHeader:
+        pending_headers_.push_back(c.text);
+        break;
+      case xr::CommandType::kStart:
+        pending_start_ = c.number;
+        break;
+      case xr::CommandType::kHwdec:
+        pending_hardware_ = c.text != "software";
+        break;
+      case xr::CommandType::kLoad:
+        std::fprintf(
+            stderr, "[xr] loading (layout %s, start %.0fs, %zu headers)\n", WireLayout(), pending_start_,
+            pending_headers_.size());
+        video_->Load(c.text, pending_headers_, pending_start_, pending_hardware_);
+        pending_hardware_ = true;
+        pending_headers_.clear();
+        pending_start_ = 0;
+        screen_dirty_ = true;
+        hud_until_ = Clock::now() + std::chrono::seconds(4);
+        break;
+      case xr::CommandType::kStop:
+        StopPlayback();
+        Emit("stopped");  // whoever asked, the app learns playback is over and the menu is back
+        break;
       default:
         video_->Apply(c);
         break;
     }
+  }
+
+  // Back to the menu: stop the stream and forget its 3D settings.
+  void StopPlayback() {
+    video_->Stop();
+    ResetPlaybackState();
+  }
+
+  void ResetPlaybackState() {
+    layout_ = xr::StereoLayout::kNone;
+    swap_eyes_ = false;
+    screen_dirty_ = true;
+  }
+
+  // What the pointer is over, as an event for the app: a tile was picked, or back was pressed.
+  void ActivateHover() {
+    const int hover = panel_.hover();
+    if (hover == xr::UiPanel::kBack) {
+      Emit("back");
+    } else if (hover >= 0 && hover < panel_.tile_count()) {
+      Emit(xr::FormatSelect(panel_.tile(hover).id));
+    }
+  }
+
+  // The menu is shown whenever nothing is on the screen yet; the cinema screen takes over once a frame exists.
+  bool PanelVisible() const { return menu_mode_ && (!video_->loaded() || !video_->has_frame()); }
+
+  xr::PanelPlane MenuPlane() const {
+    const float c = std::cos(anchor_yaw_), s = std::sin(anchor_yaw_);
+    xr::PanelPlane plane;
+    plane.center = {anchor_pos_[0] + s * -kMenuDist, anchor_pos_[1] + kMenuY, anchor_pos_[2] + c * -kMenuDist};
+    plane.right = {c, 0.f, -s};
+    plane.up = {0.f, 1.f, 0.f};
+    plane.width_m = kMenuWidth;
+    plane.height_m = kMenuWidth * 9.f / 16.f;
+    return plane;
+  }
+
+  // Aims with a controller: the one that last pulled its trigger, or whichever is tracked.
+  void UpdatePointer(XrTime time) {
+    pointer_.valid = false;
+    for (int attempt = 0; attempt < 2; ++attempt) {
+      const int hand = attempt == 0 ? pointer_hand_ : 1 - pointer_hand_;
+      XrSpaceLocation loc{XR_TYPE_SPACE_LOCATION};
+      if (XR_FAILED(xrLocateSpace(aim_space_[hand], local_space_, time, &loc))) continue;
+      const XrSpaceLocationFlags need = XR_SPACE_LOCATION_POSITION_VALID_BIT | XR_SPACE_LOCATION_ORIENTATION_VALID_BIT;
+      if ((loc.locationFlags & need) != need) continue;
+      const auto& q = loc.pose.orientation;
+      const xr::Vec3 origin{loc.pose.position.x, loc.pose.position.y, loc.pose.position.z};
+      // The pointer's forward axis is -Z of its pose.
+      const xr::Vec3 dir{
+          -2.f * (q.x * q.z + q.y * q.w), -2.f * (q.y * q.z - q.x * q.w), -(1.f - 2.f * (q.x * q.x + q.y * q.y))};
+      const xr::PanelPlane plane = MenuPlane();
+      const xr::PanelHit hit = xr::RayHitPanel(origin, dir, plane);
+      pointer_.valid = true;
+      pointer_.origin = origin;
+      pointer_.hit = hit.hit;
+      pointer_.end =
+          hit.hit
+              ? xr::Vec3{origin.x + dir.x * hit.distance, origin.y + dir.y * hit.distance, origin.z + dir.z * hit.distance}
+              : xr::Vec3{origin.x + dir.x * 3.f, origin.y + dir.y * 3.f, origin.z + dir.z * 3.f};
+      panel_.SetHover(hit.hit ? panel_.HitTest(hit.px, hit.py) : xr::UiPanel::kNone);
+      return;
+    }
+    panel_.SetHover(xr::UiPanel::kNone);
   }
 
   // ---- session ----
@@ -909,7 +1294,9 @@ class XrApp {
     }
     // Keep the picture paused while the headset is off the user's head.
     const bool visible = state_ == XR_SESSION_STATE_VISIBLE || state_ == XR_SESSION_STATE_FOCUSED;
-    if (session_running_ && !visible && !auto_paused_ && !video_->paused()) {
+    // PLEZY_XR_NO_AUTOPAUSE=1 keeps playing when nobody is wearing the headset (for unattended testing).
+    static const bool keep_playing = std::getenv("PLEZY_XR_NO_AUTOPAUSE") != nullptr;
+    if (session_running_ && !visible && !auto_paused_ && !video_->paused() && !keep_playing) {
       video_->SetPause(true);
       auto_paused_ = true;
     } else if (visible && auto_paused_) {
@@ -934,27 +1321,50 @@ class XrApp {
     si.activeActionSets = &active;
     if (XR_FAILED(xrSyncActions(session_, &si))) return;
     bool touched = false;
-    if (BoolEdge(actions_.toggle)) video_->SetPause(!video_->paused()), touched = true;
+    const bool pulled_right = BoolEdge(actions_.toggle);
+    const bool pulled_left = BoolEdge(actions_.toggle_left);
+    if (pulled_right) pointer_hand_ = 1;
+    if (pulled_left) pointer_hand_ = 0;
+    const bool pulled = pulled_right || pulled_left;
+    if (PanelVisible()) {
+      if (pulled && !video_->loaded()) ActivateHover();
+    } else if (pulled) {
+      video_->SetPause(!video_->paused());
+      touched = true;
+    }
     if (BoolEdge(actions_.cycle_env)) CycleEnvironment(), touched = true;
     if (BoolEdge(actions_.cycle_layout)) CycleLayout(), touched = true;
     if (BoolEdge(actions_.recenter)) recenter_pending_ = true;
-    if (BoolEdge(actions_.quit)) exit_ = true;
+    if (BoolEdge(actions_.quit)) {
+      if (!menu_mode_) {
+        exit_ = true;  // single-stream mode: the menu button leaves VR
+      } else if (PanelVisible()) {
+        if (panel_.can_back()) Emit("back");
+      } else {
+        StopPlayback();  // watching: the menu button returns to the menu
+        Emit("stopped");
+      }
+    }
 
     XrActionStateGetInfo gi{XR_TYPE_ACTION_STATE_GET_INFO};
     gi.action = actions_.stick;
     XrActionStateVector2f v{XR_TYPE_ACTION_STATE_VECTOR2F};
     if (XR_SUCCEEDED(xrGetActionStateVector2f(session_, &gi, &v)) && v.isActive) {
-      const auto now = Clock::now();
-      if (std::fabs(v.currentState.x) > 0.7f && now - last_seek_ > std::chrono::milliseconds(450)) {
-        last_seek_ = now;
-        video_->Seek(v.currentState.x > 0 ? 10 : -10, "relative");
-        touched = true;
-      }
-      if (std::fabs(v.currentState.y) > 0.7f && now - last_volume_ > std::chrono::milliseconds(150)) {
-        last_volume_ = now;
-        volume_ = std::min(100.0, std::max(0.0, volume_ + (v.currentState.y > 0 ? 5.0 : -5.0)));
-        video_->Apply({xr::CommandType::kVolume, volume_, {}});
-        touched = true;
+      if (PanelVisible()) {
+        if (std::fabs(v.currentState.y) > 0.15f) panel_.ScrollBy(-v.currentState.y * 1100.f * dt_);
+      } else {
+        const auto now = Clock::now();
+        if (std::fabs(v.currentState.x) > 0.7f && now - last_seek_ > std::chrono::milliseconds(450)) {
+          last_seek_ = now;
+          video_->Seek(v.currentState.x > 0 ? 10 : -10, "relative");
+          touched = true;
+        }
+        if (std::fabs(v.currentState.y) > 0.7f && now - last_volume_ > std::chrono::milliseconds(150)) {
+          last_volume_ = now;
+          volume_ = std::min(100.0, std::max(0.0, volume_ + (v.currentState.y > 0 ? 5.0 : -5.0)));
+          video_->Apply({xr::CommandType::kVolume, volume_, {}, {}});
+          touched = true;
+        }
       }
     }
     if (touched) hud_until_ = Clock::now() + std::chrono::seconds(4);
@@ -966,9 +1376,24 @@ class XrApp {
     XrFrameState fs{XR_TYPE_FRAME_STATE};
     XR_TRY(xrWaitFrame(session_, nullptr, &fs));
     XR_TRY(xrBeginFrame(session_, nullptr));
+    const auto frame_start = Clock::now();
+    dt_ = std::min(0.1f, std::chrono::duration<float>(frame_start - last_frame_time_).count());
+    last_frame_time_ = frame_start;
     PollInput();
 
+    const int frames_before = video_->frames_drawn();
     video_->UpdateTexture();
+    if (video_->frames_drawn() != frames_before) {
+      const float ms = std::chrono::duration<float, std::milli>(Clock::now() - frame_start).count();
+      video_max_ms_ = std::max(video_max_ms_, ms);
+      render_max_ms_ = std::max(render_max_ms_, video_->last_render_ms());
+      mipmap_max_ms_ = std::max(mipmap_max_ms_, video_->last_mipmap_ms());
+    }
+    if (PanelVisible()) {
+      panel_.SetOverlay(video_->loaded() ? "Loading..." : "");
+      if (centered_ && state_ == XR_SESSION_STATE_FOCUSED) UpdatePointer(fs.predictedDisplayTime);
+      panel_.Render();
+    }
 
     std::vector<XrCompositionLayerBaseHeader*> layers;
     XrCompositionLayerProjection layer{XR_TYPE_COMPOSITION_LAYER_PROJECTION};
@@ -996,6 +1421,7 @@ class XrApp {
         layers.push_back(reinterpret_cast<XrCompositionLayerBaseHeader*>(&layer));
       }
     }
+    LogFrameStats(fs.predictedDisplayPeriod, frame_start);
     XrFrameEndInfo ei{XR_TYPE_FRAME_END_INFO};
     ei.displayTime = fs.predictedDisplayTime;
     ei.environmentBlendMode = BlendMode();
@@ -1003,6 +1429,29 @@ class XrApp {
     ei.layers = layers.data();
     XR_TRY(xrEndFrame(session_, &ei));
     return true;
+  }
+
+  // Every few seconds: how fast frames go out, and the slowest video frame, to see stutter for what it is.
+  void LogFrameStats(XrDuration period_ns, Clock::time_point frame_start) {
+    ++stat_frames_;
+    stat_cpu_ms_ = std::max(stat_cpu_ms_, std::chrono::duration<float, std::milli>(Clock::now() - frame_start).count());
+    const auto now = Clock::now();
+    if (stat_window_start_ == Clock::time_point{}) stat_window_start_ = now;
+    const float seconds = std::chrono::duration<float>(now - stat_window_start_).count();
+    if (seconds < 5.f) return;
+    std::fprintf(
+        stderr,
+        "[xr] %.1f fps (display period %.1f ms); slowest frame %.1f ms, slowest video frame %.1f ms; %s, %lld "
+        "dropped\n",
+        stat_frames_ / seconds, period_ns / 1e6, stat_cpu_ms_, video_max_ms_, video_->hwdec().c_str(),
+        video_->dropped());
+    stat_frames_ = 0;
+    stat_cpu_ms_ = 0;
+    if (std::getenv("PLEZY_XR_PROFILE"))
+      std::fprintf(
+          stderr, "[xr]   slowest mpv render %.1f ms, slowest mip chain %.1f ms\n", render_max_ms_, mipmap_max_ms_);
+    video_max_ms_ = render_max_ms_ = mipmap_max_ms_ = 0;
+    stat_window_start_ = now;
   }
 
   XrEnvironmentBlendMode BlendMode() const {
@@ -1067,6 +1516,8 @@ class XrApp {
 
     glBindFramebuffer(GL_FRAMEBUFFER, eye.fbos[image]);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, eye.images[image].image, 0);
+    // Draw into the multisampled target when there is one; it is resolved into the swapchain image below.
+    glBindFramebuffer(GL_FRAMEBUFFER, eye.samples > 1 ? eye.msaa_fbo : eye.fbos[image]);
     glViewport(0, 0, eye.width, eye.height);
     glDisable(GL_DEPTH_TEST);
     glDisable(GL_CULL_FACE);
@@ -1127,8 +1578,17 @@ class XrApp {
       glDrawArrays(GL_TRIANGLE_STRIP, 0, screen_vertex_count_);
     }
 
-    DrawHud(mvp, lin);
+    if (PanelVisible()) {
+      DrawPanel(mvp, view_proj, lin);
+    } else {
+      DrawHud(mvp, lin);
+    }
 
+    if (eye.samples > 1) {
+      glBindFramebuffer(GL_READ_FRAMEBUFFER, eye.msaa_fbo);
+      glBindFramebuffer(GL_DRAW_FRAMEBUFFER, eye.fbos[image]);
+      glBlitFramebuffer(0, 0, eye.width, eye.height, 0, 0, eye.width, eye.height, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+    }
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     XrSwapchainImageReleaseInfo ri{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};
     XR_TRY(xrReleaseSwapchainImage(eye.handle, &ri));
@@ -1142,10 +1602,53 @@ class XrApp {
     return true;
   }
 
+  // The menu quad, then the pointer ray and a dot where it lands on the menu.
+  void DrawPanel(const xr::Mat4& mvp, const xr::Mat4& view_proj, float lin) {
+    glUseProgram(screen_prog_);
+    SetUniformMat4(screen_prog_, "u_mvp", mvp);
+    glUniform4f(glGetUniformLocation(screen_prog_, "u_eye_rect"), 0.f, 0.f, 1.f, 1.f);
+    glUniform1f(glGetUniformLocation(screen_prog_, "u_linear"), lin);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, panel_.texture());
+    glUniform1i(glGetUniformLocation(screen_prog_, "u_video"), 0);
+    glBindVertexArray(vao_panel_);
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+
+    if (!pointer_.valid) return;
+    glUseProgram(bar_prog_);
+    SetUniformMat4(bar_prog_, "u_mvp", view_proj);  // world space: the pointer is in tracking coordinates
+    glUniform1f(glGetUniformLocation(bar_prog_, "u_linear"), lin);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glBindVertexArray(vao_bar_);
+    glBindBuffer(GL_ARRAY_BUFFER, vbo_bar_);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), nullptr);
+    const xr::Vec3& a = pointer_.origin;
+    const xr::Vec3& b = pointer_.end;
+    const float line[] = {a.x, a.y, a.z, b.x, b.y, b.z};
+    glBufferData(GL_ARRAY_BUFFER, sizeof line, line, GL_STREAM_DRAW);
+    glUniform4f(glGetUniformLocation(bar_prog_, "u_color"), 1.f, 1.f, 1.f, pointer_.hit ? 0.55f : 0.25f);
+    glDrawArrays(GL_LINES, 0, 2);
+    if (pointer_.hit) {
+      const xr::PanelPlane plane = MenuPlane();
+      const float r = 0.018f;
+      const xr::Vec3 e = pointer_.end;
+      const float dot[] = {e.x - plane.right.x * r + 0.f, e.y - r, e.z - plane.right.z * r,
+                           e.x + plane.right.x * r,       e.y - r, e.z + plane.right.z * r,
+                           e.x - plane.right.x * r,       e.y + r, e.z - plane.right.z * r,
+                           e.x + plane.right.x * r,       e.y + r, e.z + plane.right.z * r};
+      glBufferData(GL_ARRAY_BUFFER, sizeof dot, dot, GL_STREAM_DRAW);
+      glUniform4f(glGetUniformLocation(bar_prog_, "u_color"), 0.33f, 0.62f, 1.f, 0.95f);
+      glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+    }
+    glDisable(GL_BLEND);
+  }
+
   // A thin progress bar under the screen, shown for a few seconds after input
   // and whenever playback is paused. Drawn in screen space coordinates.
   void DrawHud(const xr::Mat4& mvp, float lin) {
-    const bool show = video_->paused() || Clock::now() < hud_until_;
+    const bool show = video_->paused() || video_->buffering() || Clock::now() < hud_until_;
     if (!show || screen_vertex_count_ == 0) return;
     const double dur = video_->duration();
     const float frac = dur > 0 ? static_cast<float>(std::min(1.0, std::max(0.0, video_->position() / dur))) : 0.f;
@@ -1169,7 +1672,12 @@ class XrApp {
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glUniform4f(glGetUniformLocation(bar_prog_, "u_color"), 1.f, 1.f, 1.f, 0.25f);
     quad(-half_w, half_w);
-    glUniform4f(glGetUniformLocation(bar_prog_, "u_color"), 1.f, 1.f, 1.f, 0.9f);
+    // Amber while mpv is waiting for data (a slow network or server), white while playing.
+    if (video_->buffering()) {
+      glUniform4f(glGetUniformLocation(bar_prog_, "u_color"), 1.f, 0.72f, 0.18f, 0.95f);
+    } else {
+      glUniform4f(glGetUniformLocation(bar_prog_, "u_color"), 1.f, 1.f, 1.f, 0.9f);
+    }
     quad(-half_w, -half_w + 2.f * half_w * frac);
     glDisable(GL_BLEND);
   }
@@ -1189,6 +1697,29 @@ class XrApp {
   bool session_running_ = false, exit_ = false, srgb_ = false;
   bool opaque_ok_ = false, alpha_ok_ = false, additive_ok_ = false;
   bool centered_ = false, recenter_pending_ = false, auto_paused_ = false;
+
+  // The library menu.
+  static constexpr float kMenuWidth = 3.4f;  // metres
+  static constexpr float kMenuDist = 2.8f;   // metres in front of the viewer
+  static constexpr float kMenuY = -0.1f;     // metres below eye level
+  struct Pointer {
+    bool valid = false, hit = false;
+    xr::Vec3 origin, end;
+  };
+  xr::UiPanel panel_;
+  Pointer pointer_;
+  XrSpace aim_space_[2] = {XR_NULL_HANDLE, XR_NULL_HANDLE};
+  GLuint vao_panel_ = 0, vbo_panel_ = 0;
+  bool menu_mode_ = false;
+  int pointer_hand_ = 1;  // 0 left, 1 right
+  std::vector<std::string> pending_headers_;
+  double pending_start_ = 0;
+  bool pending_hardware_ = true;
+  float dt_ = 0.011f;
+  Clock::time_point last_frame_time_ = Clock::now();
+  Clock::time_point stat_window_start_{};
+  int stat_frames_ = 0;
+  float stat_cpu_ms_ = 0, video_max_ms_ = 0, render_max_ms_ = 0, mipmap_max_ms_ = 0;
 
   const xr::EnvironmentSpec* env_;
   xr::StereoLayout layout_;
@@ -1227,6 +1758,14 @@ bool ParseArgs(int argc, char** argv, Options* o, std::string* error) {
       o->layout = v;
     else if (a == "--swap-eyes")
       o->swap_eyes = true;
+    else if (a == "--menu")
+      o->menu = true;
+    else if (a == "--dump-ui" && next(&v))
+      o->dump_ui = v;
+    else if (a == "--demo-images" && next(&v))
+      o->demo_images = v;
+    else if (a == "--hwdec-codecs" && next(&v))
+      o->hwdec_codecs = v;
     else if (a == "--hwdec" && next(&v))
       o->hwdec = v;
     else if (a == "--volume" && next(&v))
@@ -1238,7 +1777,7 @@ bool ParseArgs(int argc, char** argv, Options* o, std::string* error) {
       return false;
     }
   }
-  if (o->url.empty()) {
+  if (o->url.empty() && o->dump_ui.empty() && !o->menu) {
     *error = "--url is required";
     return false;
   }
@@ -1253,6 +1792,56 @@ int main(int argc, char** argv) {
   if (!ParseArgs(argc, argv, &opt, &error)) {
     Fail(error);
     return 2;
+  }
+
+  if (!opt.dump_ui.empty()) {
+    Egl gl;
+    if (!gl.Init(&error)) {
+      Fail(error);
+      return 1;
+    }
+    xr::UiPanel panel;
+    if (!panel.Init(&error)) {
+      Fail(error);
+      return 1;
+    }
+    static const char* titles[] = {
+        "Avatar",
+        "The Grand Budapest Hotel",
+        "Spirited Away",
+        "Blade Runner 2049",
+        "Everything Everywhere All at Once",
+        "Dune: Part Two",
+        "Amelie",
+        "Pan's Labyrinth",
+        "Mad Max: Fury Road",
+        "Inception",
+        "Parasite",
+        "The Lord of the Rings: The Fellowship of the Ring",
+        "Up",
+        "Arrival",
+        "Coco",
+        "Wall-E"};
+    panel.BeginScreen("Movies", true);
+    for (int i = 0; i < 16; ++i) {
+      xr::UiTile t;
+      t.id = "m" + std::to_string(i);
+      t.title = titles[i];
+      t.subtitle = std::to_string(2000 + i) + " \xC2\xB7 " + std::to_string(90 + i * 3) + " min";
+      if (!opt.demo_images.empty() && i % 3 != 2)
+        t.image = opt.demo_images + "/poster-" + std::to_string(i % 6) + ".jpg";
+      panel.AddTile(t);
+    }
+    panel.EndScreen();
+    panel.SetHover(2);
+    for (int i = 0; i < 20; ++i) panel.Render();  // posters decode a few per pass
+    if (!panel.DumpPng(opt.dump_ui)) {
+      Fail("could not write " + opt.dump_ui);
+      return 1;
+    }
+    panel.Shutdown();
+    gl.Shutdown();
+    return 0;
   }
 
   CommandQueue commands;

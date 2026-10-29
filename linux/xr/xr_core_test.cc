@@ -6,6 +6,7 @@
 #include "environment.h"
 #include "screen_geometry.h"
 #include "stereo_layout.h"
+#include "ui_layout.h"
 #include "xr_math.h"
 #include "xr_protocol.h"
 
@@ -115,6 +116,79 @@ int main() {
         FormatPosition(1.5, 60, false, "cinema", "sideBySideHalf", "v4l2m2m-copy", 12) ==
         "position 1.500 60.000 0 cinema sideBySideHalf v4l2m2m-copy 12");
     CHECK(FormatError("a\nb").find('\n') == std::string::npos);
+    // media loading
+    CHECK(ParseCommand("load http://h/v.mkv?x=1").text == "http://h/v.mkv?x=1");
+    CHECK(ParseCommand("load").type == CommandType::kInvalid);
+    CHECK(ParseCommand("header Authorization: Bearer abc").text == "Authorization: Bearer abc");
+    CHECK(ParseCommand("start 61.5").number == 61.5);
+    CHECK(ParseCommand("start soon").type == CommandType::kInvalid);
+    CHECK(ParseCommand("stop").type == CommandType::kStop);
+    CHECK(ParseCommand("hwdec software").text == "software");
+    CHECK(ParseCommand("hwdec auto").type == CommandType::kHwdec);
+    CHECK(ParseCommand("hwdec maybe").type == CommandType::kInvalid);
+    // menu screens: tabs separate fields, spaces stay inside them
+    Command begin = ParseCommand("ui.begin\tContinue Watching\t1");
+    CHECK(
+        begin.type == CommandType::kUiBegin && begin.fields.size() == 2 && begin.fields[0] == "Continue Watching" &&
+        begin.fields[1] == "1");
+    Command tile = ParseCommand("ui.tile\tabc 1\tThe Movie\t2009 PG-13\t/tmp/p 1.jpg\r\n");
+    CHECK(
+        tile.type == CommandType::kUiTile && tile.fields.size() == 4 && tile.fields[0] == "abc 1" &&
+        tile.fields[1] == "The Movie" && tile.fields[3] == "/tmp/p 1.jpg");
+    Command bare_tile = ParseCommand("ui.tile\tid\tT\tS\t");  // an empty image path is allowed
+    CHECK(bare_tile.type == CommandType::kUiTile && bare_tile.fields.size() == 4 && bare_tile.fields[3].empty());
+    CHECK(ParseCommand("ui.tile\tonly\ttwo").type == CommandType::kInvalid);
+    CHECK(ParseCommand("ui.begin\tTitle").type == CommandType::kInvalid);
+    CHECK(ParseCommand("ui.end").type == CommandType::kUiEnd);
+    CHECK(ParseCommand("ui.status\tLoading...").fields[0] == "Loading...");
+    CHECK(ParseCommand("ui.bogus\tx").type == CommandType::kInvalid);
+    CHECK(ParseCommand("ui.dump\t/tmp/a b.png").fields[0] == "/tmp/a b.png");
+    CHECK(ParseCommand("ui.dump").type == CommandType::kInvalid);
+    CHECK(FormatSelect("lib 3") == "select\tlib 3");
+  }
+
+  // Menu layout and pointing
+  {
+    GridMetrics g;
+    CHECK(RowCount(0, 7) == 0 && RowCount(7, 7) == 1 && RowCount(8, 7) == 2);
+    CHECK(MaxScroll(7, g) == 0.f);   // one row fits
+    CHECK(MaxScroll(14, g) == 0.f);  // two rows fit too
+    CHECK(MaxScroll(15, g) > 0.f);   // a third row does not
+    CHECK(ClampScroll(-50.f, 30, g) == 0.f);
+    CHECK(Near(ClampScroll(1e9f, 30, g), MaxScroll(30, g)));
+    Rect first = TileRect(0, 0.f, g);
+    Rect second = TileRect(1, 0.f, g);
+    Rect eighth = TileRect(7, 0.f, g);
+    CHECK(Near(second.x - first.x, g.tile_w + g.gap));
+    CHECK(Near(eighth.x, first.x) && Near(eighth.y - first.y, g.RowPitch()));
+    // Every tile is hit at its own centre, and nothing is hit in a gap.
+    for (int i = 0; i < 14; ++i) {
+      Rect r = TileRect(i, 0.f, g);
+      if (r.y + r.h > g.bottom) continue;
+      CHECK(HitTile(r.x + r.w / 2, r.y + r.h / 2, 14, 0.f, g) == i);
+    }
+    CHECK(HitTile(first.x + first.w + g.gap / 2, first.y + 10.f, 14, 0.f, g) == -1);
+    // Scrolling moves tiles up, and a tile under the header cannot be picked.
+    CHECK(Near(TileRect(0, 100.f, g).y, first.y - 100.f));
+    CHECK(HitTile(first.x + 10.f, g.top - 5.f, 14, 0.f, g) == -1);
+    CHECK(HitTile(first.x + 10.f, g.top + 5.f, 21, 300.f, g) == 0);  // row 0's caption is still visible
+    CHECK(HitTile(first.x + 10.f, g.top + 5.f, 21, 450.f, g) == 7);  // row 0 has scrolled away
+    CHECK(BackButtonRect().Contains(kPanelWidth - 200.f, 80.f));
+
+    // A panel 3 m ahead (-Z), 3.2 x 1.8 m, facing the viewer at the origin.
+    PanelPlane plane;
+    plane.center = {0, 0, -3.f};
+    plane.right = {1, 0, 0};
+    plane.up = {0, 1, 0};
+    PanelHit centre = RayHitPanel({0, 0, 0}, {0, 0, -1}, plane);
+    CHECK(centre.hit && Near(centre.px, kPanelWidth / 2, 0.5f) && Near(centre.py, kPanelHeight / 2, 0.5f));
+    CHECK(Near(centre.distance, 3.f));
+    PanelHit top_left = RayHitPanel({-1.59f, 0.89f, 0}, {0, 0, -1}, plane);
+    CHECK(top_left.hit && top_left.px < 20.f && top_left.py < 20.f);
+    CHECK(!RayHitPanel({0, 0, 0}, {0, 0, 1}, plane).hit);      // pointing away
+    CHECK(!RayHitPanel({0, 0, 0}, {1, 0, 0}, plane).hit);      // parallel to the panel
+    CHECK(!RayHitPanel({0, 0, -5.f}, {0, 0, -1}, plane).hit);  // starting behind it
+    CHECK(!RayHitPanel({2.f, 0, 0}, {0, 0, -1}, plane).hit);   // beside it
   }
 
   if (g_failures) return 1;

@@ -23,7 +23,10 @@ extension _VideoPlayerVrCinemaMethods on VideoPlayerScreenState {
     if (_vrSession != null || currentPlayer == null || media == null || !mounted) return;
 
     final settings = SettingsService.instance;
+    // The player reports film time; the helper plays the stream, which a transcode may start mid-film.
+    final timelineOffset = currentPlayer.timelineOffset;
     final position = currentPlayer.state.position;
+    final streamStart = position > timelineOffset ? position - timelineOffset : Duration.zero;
     final wasPlaying = currentPlayer.state.playing;
     await currentPlayer.pause();
 
@@ -31,19 +34,33 @@ extension _VideoPlayerVrCinemaMethods on VideoPlayerScreenState {
         ? await _detectStereo3d(currentPlayer)
         : const Stereo3dInfo(Stereo3dLayout.none);
 
+    final request = XrCinemaRequest(
+      url: media.uri,
+      headers: media.headers ?? const {},
+      start: streamStart,
+      title: widget.metadata.displayTitle,
+      environment: settings.read(SettingsService.vrEnvironment),
+      stereo: stereo,
+      volume: currentPlayer.state.volume.round(),
+      hardwareDecoding: VrMenuController.instance.hardwareDecodingForNext,
+    );
+
+    // VR is the app: the headset menu already has a session, so play on that one. Nothing is shown in the
+    // (invisible) window; when the viewer stops or the film ends, hand the position back and leave this screen.
+    final menu = VrMenuController.instance;
+    if (menu.session != null) {
+      final last = await menu.playAndWait(request);
+      if (!mounted) return;
+      final livePlayer = player;
+      if (last != null && livePlayer != null) await livePlayer.seek(last.position + timelineOffset);
+      if (!mounted) return;
+      await _handleBackButton();
+      return;
+    }
+
     final XrCinemaSession session;
     try {
-      session = await XrCinemaService.launch(
-        XrCinemaRequest(
-          url: media.uri,
-          headers: media.headers ?? const {},
-          start: position,
-          title: widget.metadata.displayTitle,
-          environment: settings.read(SettingsService.vrEnvironment),
-          stereo: stereo,
-          volume: currentPlayer.state.volume.round(),
-        ),
-      );
+      session = await XrCinemaService.launch(request);
     } on Object catch (e) {
       appLogger.e('VR cinema failed to start', error: e);
       if (mounted) showErrorSnackBar(context, t.videoControls.vrCinemaFailed(message: e.toString()));
@@ -95,7 +112,7 @@ extension _VideoPlayerVrCinemaMethods on VideoPlayerScreenState {
     if (!mounted) return;
     final livePlayer = player;
     if (livePlayer == null) return;
-    if (last != null) await livePlayer.seek(last.position);
+    if (last != null) await livePlayer.seek(last.position + timelineOffset);
     if (!mounted) return;
     if (leaveWhenDone && failure == null) {
       // Started straight into VR: leaving the headset means done watching, so go back to the library.
@@ -113,11 +130,13 @@ extension _VideoPlayerVrCinemaMethods on VideoPlayerScreenState {
   /// Container metadata (via mpv), then the file name, decide how the eyes are packed.
   Future<Stereo3dInfo> _detectStereo3d(Player currentPlayer) async {
     Stereo3dInfo container = const Stereo3dInfo(Stereo3dLayout.none);
+    int? frameWidth;
+    int? frameHeight;
     try {
       final stereoIn = await currentPlayer.getProperty('video-params/stereo-in');
-      final width = int.tryParse(await currentPlayer.getProperty('video-params/w') ?? '');
-      final height = int.tryParse(await currentPlayer.getProperty('video-params/h') ?? '');
-      container = stereo3dFromMpvStereoIn(stereoIn, frameWidth: width, frameHeight: height);
+      frameWidth = int.tryParse(await currentPlayer.getProperty('video-params/w') ?? '');
+      frameHeight = int.tryParse(await currentPlayer.getProperty('video-params/h') ?? '');
+      container = stereo3dFromMpvStereoIn(stereoIn, frameWidth: frameWidth, frameHeight: frameHeight);
     } on Object catch (e) {
       appLogger.d('Could not read container stereo mode: $e');
     }
@@ -129,8 +148,11 @@ extension _VideoPlayerVrCinemaMethods on VideoPlayerScreenState {
     // File name first: it carries the frame packing, a bare title rarely does.
     return resolveStereo3d(
       container: container,
-      name: [fileName, widget.metadata.displayTitle].whereType<String>().join(' '),
+      // The library's name counts too: a library called "3D Movies" is the viewer saying what is in it.
+      name: [fileName, widget.metadata.displayTitle, widget.metadata.libraryTitle].whereType<String>().join(' '),
       guessFromBare3dTag: true,
+      frameWidth: frameWidth,
+      frameHeight: frameHeight,
     );
   }
 

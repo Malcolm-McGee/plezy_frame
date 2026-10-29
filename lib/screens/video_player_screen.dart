@@ -81,6 +81,7 @@ import '../services/ambient_lighting_service.dart';
 import '../services/video_filter_manager.dart';
 import '../services/video_volume_controller.dart';
 import '../services/pip_service.dart';
+import '../services/vr_menu_controller.dart';
 import '../services/xr_cinema_service.dart';
 import '../media/stereo_3d.dart';
 import '../services/shader_service.dart';

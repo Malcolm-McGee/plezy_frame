@@ -42,6 +42,7 @@ import 'services/macos_window_service.dart';
 import 'services/native_window_service.dart';
 import 'services/fullscreen_state_manager.dart';
 import 'services/settings_service.dart';
+import 'services/vr_menu_controller.dart';
 import 'services/xr_cinema_service.dart';
 import 'services/agent_control_service.dart';
 import 'widgets/agent_control_scope.dart';
@@ -190,7 +191,11 @@ void _bootstrapApp() {
         databaseRecoveryOutcome: dependencies.databaseRecoveryOutcome,
       ),
       discard: (dependencies) => dependencies.appDatabase.close(),
-      onCommitted: (dependencies) => _startNonessentialInitialization(dependencies.settings),
+      onCommitted: (dependencies) {
+        _startNonessentialInitialization(dependencies.settings);
+        // Started as a VR program: the headset menu is the app, and this window stays invisible.
+        if (XrCinemaService.launchedForVr && XrCinemaService.isSupported) unawaited(VrMenuController.instance.start());
+      },
       lightTheme: monoTheme(MonoPalette.light),
       darkTheme: monoTheme(MonoPalette.dark),
       resolveTheme: _resolveStartupTheme,

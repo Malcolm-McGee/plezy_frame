@@ -82,9 +82,15 @@ class VideoDecodeCapabilities {
     }
   }
 
+  /// Codecs refused for the playback in progress only, on top of the user's own refusals. The VR cinema sets
+  /// this when it needs the server to convert a film the headset cannot decode, so the conversion comes back
+  /// as H.264, and clears it afterwards so other titles are left alone.
+  static Set<RankedVideoCodec> temporaryRefusals = const {};
+
   /// Whether [codec] should be advertised to a media server. Safe before init.
   static bool accepts(RankedVideoCodec codec) {
     if (isRefusedByUser(codec)) return false;
+    if (codec.isRefusable && temporaryRefusals.contains(codec)) return false;
     final instance = _singleton.instance;
     return switch (codec) {
       RankedVideoCodec.av1 => instance?._hardwareAv1 ?? true,

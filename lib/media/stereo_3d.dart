@@ -37,7 +37,12 @@ enum Stereo3dLayout {
 /// contains the letters ("Absbsb") never triggers. Returns [Stereo3dLayout.none]
 /// when nothing reliable is found; a bare `3D` tag does not say how the eyes are
 /// packed, so it is not enough on its own.
-Stereo3dLayout detectStereo3dFromName(String? name, {bool guessFromBare3dTag = false}) {
+Stereo3dLayout detectStereo3dFromName(
+  String? name, {
+  bool guessFromBare3dTag = false,
+  int? frameWidth,
+  int? frameHeight,
+}) {
   if (name == null || name.isEmpty) return Stereo3dLayout.none;
   final tokens = name.toLowerCase().split(RegExp(r'[^a-z0-9]+')).where((t) => t.isNotEmpty).toList();
   // "h-sbs", "half-ou" arrive as separate tokens; look at adjacent pairs too.
@@ -53,7 +58,13 @@ Stereo3dLayout detectStereo3dFromName(String? name, {bool guessFromBare3dTag = f
   if (candidates.any(halfTab.contains)) return Stereo3dLayout.topBottomHalf;
   // A lone "3D" says it is 3D but not how the eyes are packed. Half side-by-side is by far the most
   // common, and it can be changed in VR, so it is a better guess than showing two pictures.
-  if (guessFromBare3dTag && candidates.contains('3d')) return Stereo3dLayout.sideBySideHalf;
+  if (guessFromBare3dTag && candidates.contains('3d')) {
+    // The frame's shape says whether the eyes are full width (very wide) or full height (very tall).
+    final ratio = (frameWidth != null && frameHeight != null && frameHeight > 0) ? frameWidth / frameHeight : null;
+    if (ratio != null && ratio > 3.0) return Stereo3dLayout.sideBySideFull;
+    if (ratio != null && ratio < 1.0) return Stereo3dLayout.topBottomFull;
+    return Stereo3dLayout.sideBySideHalf;
+  }
   return Stereo3dLayout.none;
 }
 
@@ -139,8 +150,17 @@ Stereo3dInfo resolveStereo3d({
   Stereo3dInfo? container,
   String? name,
   bool guessFromBare3dTag = false,
+  int? frameWidth,
+  int? frameHeight,
 }) {
   if (userOverride != null) return userOverride;
   if (container != null && container.isStereo) return container;
-  return Stereo3dInfo(detectStereo3dFromName(name, guessFromBare3dTag: guessFromBare3dTag));
+  return Stereo3dInfo(
+    detectStereo3dFromName(
+      name,
+      guessFromBare3dTag: guessFromBare3dTag,
+      frameWidth: frameWidth,
+      frameHeight: frameHeight,
+    ),
+  );
 }

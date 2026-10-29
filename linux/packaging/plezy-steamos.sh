@@ -7,9 +7,11 @@
 # session this starts a small private one (a nested KWin, drawn inside the X11
 # window gamescope provides) and runs Plezy inside it.
 #
-# It also starts Plezy as a VR program: fullscreen, and every title opens straight
-# in the VR cinema (see XrCinemaService.launchedForVr). Set PLEZY_VR=0 to run it as
-# an ordinary desktop app instead.
+# By default it starts Plezy as a VR program: the headset menu (library, shows,
+# posters, the cinema screen) is the app. The Plezy window still exists, because it
+# is the engine that talks to the media server, but it lives in an invisible virtual
+# compositor and nothing is shown on the desktop or in Game Mode. Set PLEZY_VR=0 to
+# run it as an ordinary desktop app instead (needed once, to sign in to a server).
 #
 # Set PLEZY_FORCE_NESTED=1 to always use the nested session, or
 # PLEZY_NESTED_SIZE=WIDTHxHEIGHT to override the detected screen size.
@@ -33,12 +35,12 @@ on_usable_wayland() {
   [[ "$WAYLAND_DISPLAY" != "${GAMESCOPE_WAYLAND_DISPLAY:-gamescope-0}" ]] || return 1
 }
 
-if on_usable_wayland; then
+if [[ "$PLEZY_VR" != "1" ]] && on_usable_wayland; then
   export GDK_BACKEND=wayland
   exec "$DIR/plezy.sh" "$@"
 fi
 
-if [[ -z "${DISPLAY:-}" ]]; then
+if [[ "$PLEZY_VR" != "1" && -z "${DISPLAY:-}" ]]; then
   echo "plezy: no Wayland or X11 display to run in." >&2
   exit 1
 fi
@@ -48,7 +50,9 @@ if ! command -v kwin_wayland >/dev/null 2>&1; then
 fi
 
 size="${PLEZY_NESTED_SIZE:-}"
-if [[ -z "$size" ]] && command -v xdpyinfo >/dev/null 2>&1; then
+if [[ "$PLEZY_VR" == "1" ]]; then
+  size="${size:-1920x1080}"  # invisible, so the size only has to be sensible
+elif [[ -z "$size" ]] && command -v xdpyinfo >/dev/null 2>&1; then
   size="$(xdpyinfo 2>/dev/null | awk '/dimensions:/ {print $2; exit}')"
 fi
 size="${size:-1920x1080}"
@@ -96,8 +100,14 @@ exec "$DIR/plezy.sh" "\$@"
 EOF
 chmod +x "$session"
 
+if [[ "$PLEZY_VR" == "1" ]]; then
+  display_args=(--virtual)  # no window anywhere: the compositor renders to memory
+else
+  display_args=(--x11-display "$DISPLAY")
+fi
+
 XDG_CONFIG_HOME="$rules_home" kwin_wayland \
-  --x11-display "$DISPLAY" \
+  "${display_args[@]}" \
   --width "$width" --height "$height" \
   --socket "plezy-$$" \
   --no-lockscreen --no-global-shortcuts \

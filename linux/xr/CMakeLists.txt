@@ -11,7 +11,7 @@ pkg_check_modules(XR_EGL REQUIRED IMPORTED_TARGET egl)
 pkg_check_modules(XR_GLES REQUIRED IMPORTED_TARGET glesv2)
 find_package(Threads REQUIRED)
 
-add_executable(plezy-xr "xr_main.cc")
+add_executable(plezy-xr "xr_main.cc" "ui_panel.cc")
 target_compile_features(plezy-xr PRIVATE cxx_std_17)
 # OpenXR's `{XR_TYPE_X}` initialiser idiom leaves the other members zeroed on
 # purpose, which -Wextra reports as missing initialisers.
@@ -50,4 +50,6 @@ target_link_libraries(plezy-xr PRIVATE PkgConfig::XR_MPV PkgConfig::XR_EGL PkgCo
 # is started directly rather than through plezy.sh.
 target_link_options(plezy-xr PRIVATE -Wl,--disable-new-dtags)
 target_include_directories(plezy-xr PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+# stb is third-party; SYSTEM keeps its warnings out of the build.
+target_include_directories(plezy-xr SYSTEM PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/third_party")
 set_target_properties(plezy-xr PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/intermediates_do_not_run")
