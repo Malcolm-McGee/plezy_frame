@@ -29,7 +29,10 @@
 #include <cstdlib>
 #include <cstring>
 #include <deque>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -37,11 +40,17 @@
 #include <vector>
 
 #include "environment.h"
+#include "screen_adjust.h"
 #include "screen_geometry.h"
 #include "stereo_layout.h"
 #include "ui_panel.h"
 #include "xr_math.h"
 #include "xr_protocol.h"
+
+// Older OpenXR headers (e.g. Ubuntu 24.04's) predate this macro; it is defined as 1.0 with the SDK's own patch level.
+#ifndef XR_API_VERSION_1_0
+#define XR_API_VERSION_1_0 XR_MAKE_VERSION(1, 0, XR_VERSION_PATCH(XR_CURRENT_API_VERSION))
+#endif
 
 namespace {
 
@@ -730,6 +739,7 @@ class XrApp {
     layout_ = xr::StereoLayoutFromWireName(opt.layout);
     swap_eyes_ = opt.swap_eyes;
     menu_mode_ = opt.menu;
+    LoadSavedScreens();
   }
 
   bool Init(std::string* error) {
@@ -859,7 +869,8 @@ class XrApp {
     XrActionSet set = XR_NULL_HANDLE;
     XrAction toggle = XR_NULL_HANDLE, cycle_env = XR_NULL_HANDLE, cycle_layout = XR_NULL_HANDLE,
              recenter = XR_NULL_HANDLE, quit = XR_NULL_HANDLE, stick = XR_NULL_HANDLE, toggle_left = XR_NULL_HANDLE,
-             aim_left = XR_NULL_HANDLE, aim_right = XR_NULL_HANDLE;
+             aim_left = XR_NULL_HANDLE, aim_right = XR_NULL_HANDLE, adjust = XR_NULL_HANDLE,
+             stick_left = XR_NULL_HANDLE;
   };
 
   bool InitBlendModes(std::string* error) {
@@ -1001,6 +1012,8 @@ class XrApp {
     actions_.toggle_left = MakeAction("select_left", XR_ACTION_TYPE_BOOLEAN_INPUT);
     actions_.aim_left = MakeAction("point_left", XR_ACTION_TYPE_POSE_INPUT);
     actions_.aim_right = MakeAction("point_right", XR_ACTION_TYPE_POSE_INPUT);
+    actions_.adjust = MakeAction("adjust_screen", XR_ACTION_TYPE_BOOLEAN_INPUT);
+    actions_.stick_left = MakeAction("move_screen", XR_ACTION_TYPE_VECTOR2F_INPUT);
 
     // Suggest bindings for the common profiles; the runtime remaps for others
     // (Steam Frame controllers are rebindable from the SteamVR binding UI).
@@ -1028,6 +1041,8 @@ class XrApp {
                                                           {actions_.quit, "/user/hand/left/input/menu/click"},
                                                           {actions_.stick, "/user/hand/right/input/thumbstick"},
                                                           {actions_.toggle_left, "/user/hand/left/input/trigger/value"},
+                                                          {actions_.adjust, "/user/hand/left/input/squeeze/value"},
+                                                          {actions_.stick_left, "/user/hand/left/input/thumbstick"},
                                                           {actions_.aim_left, "/user/hand/left/input/aim/pose"},
                                                           {actions_.aim_right, "/user/hand/right/input/aim/pose"}});
     suggest(
@@ -1038,6 +1053,8 @@ class XrApp {
                                                          {actions_.quit, "/user/hand/left/input/b/click"},
                                                          {actions_.stick, "/user/hand/right/input/thumbstick"},
                                                          {actions_.toggle_left, "/user/hand/left/input/trigger/value"},
+                                                         {actions_.adjust, "/user/hand/left/input/squeeze/value"},
+                                                         {actions_.stick_left, "/user/hand/left/input/thumbstick"},
                                                          {actions_.aim_left, "/user/hand/left/input/aim/pose"},
                                                          {actions_.aim_right, "/user/hand/right/input/aim/pose"}});
 
@@ -1092,10 +1109,59 @@ class XrApp {
   // ---- state changes ----
 
   void ApplyEnvironmentDefaults() {
+    screen_ = xr::ScreenParams();
     screen_.distance_m = env_->screen_distance;
     screen_.width_m = env_->screen_width;
     screen_.curvature = env_->screen_curvature;
+    // Whatever the viewer last set for this environment wins over its defaults.
+    const auto saved = saved_screens_.find(env_->wire_name);
+    if (saved != saved_screens_.end()) screen_ = saved->second;
     screen_dirty_ = true;
+  }
+
+  // ---- the viewer's own screen placement, kept per environment ----
+
+  static std::filesystem::path ScreensFile() {
+    const char* xdg = std::getenv("XDG_CONFIG_HOME");
+    const char* home = std::getenv("HOME");
+    std::filesystem::path base = (xdg && *xdg)     ? std::filesystem::path(xdg)
+                                 : (home && *home) ? std::filesystem::path(home) / ".config"
+                                                   : std::filesystem::path();
+    if (base.empty()) return {};
+    return base / "plezy-xr" / "screens.conf";
+  }
+
+  void LoadSavedScreens() {
+    const auto file = ScreensFile();
+    if (file.empty()) return;
+    std::ifstream in(file);
+    std::string line;
+    while (std::getline(in, line)) {
+      std::string name;
+      xr::ScreenParams p;
+      if (xr::ParseScreenLine(line, &name, &p)) saved_screens_[name] = p;
+    }
+  }
+
+  void SaveScreens() {
+    const auto file = ScreensFile();
+    if (file.empty()) return;
+    std::error_code ec;
+    std::filesystem::create_directories(file.parent_path(), ec);
+    const auto tmp = std::filesystem::path(file.string() + ".tmp");
+    {
+      std::ofstream out(tmp, std::ios::trunc);
+      for (const auto& [name, params] : saved_screens_) out << xr::FormatScreenLine(name, params) << '\n';
+      if (!out) return;
+    }
+    std::filesystem::rename(tmp, file, ec);
+  }
+
+  void ResetScreen() {
+    saved_screens_.erase(env_->wire_name);
+    ApplyEnvironmentDefaults();
+    SaveScreens();
+    screen_changed_ = false;
   }
 
   const char* WireLayout() const {
@@ -1313,6 +1379,25 @@ class XrApp {
     return st.isActive && st.currentState && st.changedSinceLastSync;
   }
 
+  bool BoolHeld(XrAction action) {
+    XrActionStateGetInfo gi{XR_TYPE_ACTION_STATE_GET_INFO};
+    gi.action = action;
+    XrActionStateBoolean st{XR_TYPE_ACTION_STATE_BOOLEAN};
+    if (XR_FAILED(xrGetActionStateBoolean(session_, &gi, &st))) return false;
+    return st.isActive && st.currentState;
+  }
+
+  // Returns false when the stick is not bound (e.g. a controller without one).
+  bool ReadStick(XrAction action, float* x, float* y) {
+    XrActionStateGetInfo gi{XR_TYPE_ACTION_STATE_GET_INFO};
+    gi.action = action;
+    XrActionStateVector2f v{XR_TYPE_ACTION_STATE_VECTOR2F};
+    if (XR_FAILED(xrGetActionStateVector2f(session_, &gi, &v)) || !v.isActive) return false;
+    *x = v.currentState.x;
+    *y = v.currentState.y;
+    return true;
+  }
+
   void PollInput() {
     if (state_ != XR_SESSION_STATE_FOCUSED) return;
     XrActiveActionSet active{actions_.set, XR_NULL_PATH};
@@ -1334,7 +1419,20 @@ class XrApp {
     }
     if (BoolEdge(actions_.cycle_env)) CycleEnvironment(), touched = true;
     if (BoolEdge(actions_.cycle_layout)) CycleLayout(), touched = true;
-    if (BoolEdge(actions_.recenter)) recenter_pending_ = true;
+    // Holding the left grip puts the sticks on the screen: move, resize and curve it.
+    const bool adjusting = !PanelVisible() && BoolHeld(actions_.adjust);
+    if (BoolEdge(actions_.recenter)) {
+      if (adjusting)
+        ResetScreen();  // grip + stick click: back to this environment's default screen
+      else
+        recenter_pending_ = true;
+    }
+    if (adjust_held_ && !adjusting && screen_changed_) {
+      saved_screens_[env_->wire_name] = screen_;
+      SaveScreens();
+      screen_changed_ = false;
+    }
+    adjust_held_ = adjusting;
     if (BoolEdge(actions_.quit)) {
       if (!menu_mode_) {
         exit_ = true;  // single-stream mode: the menu button leaves VR
@@ -1349,7 +1447,23 @@ class XrApp {
     XrActionStateGetInfo gi{XR_TYPE_ACTION_STATE_GET_INFO};
     gi.action = actions_.stick;
     XrActionStateVector2f v{XR_TYPE_ACTION_STATE_VECTOR2F};
-    if (XR_SUCCEEDED(xrGetActionStateVector2f(session_, &gi, &v)) && v.isActive) {
+    if (adjusting) {
+      float rx = 0, ry = 0, lx = 0, ly = 0;
+      ReadStick(actions_.stick, &rx, &ry);
+      ReadStick(actions_.stick_left, &lx, &ly);
+      xr::ScreenAdjustInput in;
+      in.width = ry;      // right stick up/down: resize
+      in.curvature = rx;  // right stick left/right: curve
+      in.distance = ly;   // left stick up/down: push away / pull closer
+      in.height = lx;     // left stick left/right: lower / raise
+      const xr::ScreenParams next = xr::AdjustScreen(screen_, in, dt_);
+      if (!xr::SameScreen(next, screen_)) {
+        screen_ = next;
+        screen_dirty_ = true;
+        screen_changed_ = true;
+      }
+      touched = true;  // keep the progress bar up while arranging the screen
+    } else if (XR_SUCCEEDED(xrGetActionStateVector2f(session_, &gi, &v)) && v.isActive) {
       if (PanelVisible()) {
         if (std::fabs(v.currentState.y) > 0.15f) panel_.ScrollBy(-v.currentState.y * 1100.f * dt_);
       } else {
@@ -1697,6 +1811,8 @@ class XrApp {
   bool session_running_ = false, exit_ = false, srgb_ = false;
   bool opaque_ok_ = false, alpha_ok_ = false, additive_ok_ = false;
   bool centered_ = false, recenter_pending_ = false, auto_paused_ = false;
+  bool adjust_held_ = false, screen_changed_ = false;
+  std::map<std::string, xr::ScreenParams> saved_screens_;
 
   // The library menu.
   static constexpr float kMenuWidth = 3.4f;  // metres

@@ -4,6 +4,7 @@
 #include <cstdlib>
 
 #include "environment.h"
+#include "screen_adjust.h"
 #include "screen_geometry.h"
 #include "stereo_layout.h"
 #include "ui_layout.h"
@@ -189,6 +190,76 @@ int main() {
     CHECK(!RayHitPanel({0, 0, 0}, {1, 0, 0}, plane).hit);      // parallel to the panel
     CHECK(!RayHitPanel({0, 0, -5.f}, {0, 0, -1}, plane).hit);  // starting behind it
     CHECK(!RayHitPanel({2.f, 0, 0}, {0, 0, -1}, plane).hit);   // beside it
+  }
+
+  // Screen adjustment
+  {
+    ScreenParams base;
+    base.distance_m = 6.f;
+    base.width_m = 8.f;
+    base.curvature = 0.4f;
+    base.height_offset_m = 0.f;
+    // Deadzone: small drift does nothing, full deflection reaches 1, NaN is ignored.
+    CHECK(StickDeadzone(0.15f) == 0.f);
+    CHECK(Near(StickDeadzone(1.f), 1.f));
+    CHECK(Near(StickDeadzone(-1.f), -1.f));
+    CHECK(StickDeadzone(NAN) == 0.f);
+    CHECK(StickDeadzone(0.6f) > 0.f && StickDeadzone(0.6f) < 1.f);
+    // No input: unchanged.
+    CHECK(SameScreen(AdjustScreen(base, {}, 0.016f), base));
+    // Each axis moves the right way.
+    ScreenAdjustInput up;
+    up.width = 1.f;
+    CHECK(AdjustScreen(base, up, 0.05f).width_m > base.width_m);
+    up.width = -1.f;
+    CHECK(AdjustScreen(base, up, 0.05f).width_m < base.width_m);
+    ScreenAdjustInput far_in;
+    far_in.distance = 1.f;
+    CHECK(AdjustScreen(base, far_in, 0.05f).distance_m > base.distance_m);
+    ScreenAdjustInput curve;
+    curve.curvature = 1.f;
+    CHECK(AdjustScreen(base, curve, 0.05f).curvature > base.curvature);
+    ScreenAdjustInput raise;
+    raise.height = 1.f;
+    CHECK(AdjustScreen(base, raise, 0.05f).height_offset_m > 0.f);
+    // Scaling is proportional, not additive.
+    ScreenAdjustInput grow;
+    grow.width = 1.f;
+    ScreenParams small = base, big = base;
+    small.width_m = 2.f;
+    big.width_m = 20.f;
+    CHECK(Near((AdjustScreen(big, grow, 0.05f).width_m / 20.f), (AdjustScreen(small, grow, 0.05f).width_m / 2.f)));
+    // Holding a stick for a long time stops at the limits.
+    ScreenParams p = base;
+    ScreenAdjustInput all;
+    all.distance = 1.f;
+    all.width = 1.f;
+    all.curvature = 1.f;
+    all.height = 1.f;
+    for (int i = 0; i < 2000; ++i) p = AdjustScreen(p, all, 0.016f);
+    CHECK(Near(p.distance_m, kMaxDistance) && Near(p.width_m, kMaxWidth));
+    CHECK(Near(p.curvature, 1.f) && Near(p.height_offset_m, kMaxHeightOffset));
+    for (int i = 0; i < 2000; ++i) p = AdjustScreen(p, {-1.f, -1.f, -1.f, -1.f}, 0.016f);
+    CHECK(Near(p.distance_m, kMinDistance) && Near(p.width_m, kMinWidth));
+    CHECK(Near(p.curvature, 0.f) && Near(p.height_offset_m, kMinHeightOffset));
+    // A huge or negative frame time cannot fling the screen.
+    CHECK(Near(AdjustScreen(base, all, 1e6f).width_m, AdjustScreen(base, all, 0.1f).width_m));
+    CHECK(SameScreen(AdjustScreen(base, all, -5.f), base));
+    // The adjusted screen still builds finite geometry.
+    for (const auto& v : BuildScreenStrip(p)) CHECK(std::isfinite(v.x) && std::isfinite(v.y) && std::isfinite(v.z));
+    // Persistence format round-trips and rejects garbage.
+    std::string env;
+    ScreenParams parsed;
+    CHECK(ParseScreenLine(FormatScreenLine("lounge", base), &env, &parsed));
+    CHECK(env == "lounge" && SameScreen(parsed, base, 1e-3f));
+    CHECK(!ParseScreenLine("lounge 1 2 3", &env, &parsed));
+    CHECK(!ParseScreenLine("lounge 1 2 3 4 5", &env, &parsed));
+    CHECK(!ParseScreenLine("lounge a b c d", &env, &parsed));
+    CHECK(!ParseScreenLine("", &env, &parsed));
+    CHECK(!ParseScreenLine("lounge nan 2 3 4", &env, &parsed));
+    CHECK(
+        ParseScreenLine("void 999 999 9 99", &env, &parsed) && parsed.distance_m == kMaxDistance &&
+        parsed.width_m == kMaxWidth && parsed.curvature == 1.f && parsed.height_offset_m == kMaxHeightOffset);
   }
 
   if (g_failures) return 1;

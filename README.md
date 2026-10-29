@@ -58,6 +58,18 @@ Start **Plezy VR** (from Steam, or `~/plezy/plezy-steamos.sh`). You go straight 
 
 Bindings are suggested for the Khronos simple, Oculus Touch and Valve Index profiles and can be rebound in SteamVR.
 
+**Move, resize and curve the screen:** while watching, hold the **left grip** and use the sticks.
+
+| While holding the left grip | Action |
+| --- | --- |
+| Right stick up / down | Make the screen bigger / smaller |
+| Right stick left / right | Flatter / more curved |
+| Left stick up / down | Push the screen away / pull it closer |
+| Left stick left / right | Lower / raise the screen |
+| Left stick click | Reset to this environment's default |
+
+Each environment remembers its own arrangement (saved in `~/.config/plezy-xr/screens.conf`). To change which way the screen faces, look where you want it and press the left stick click (without the grip) to recenter.
+
 **Environments:** Void, Cinema, Lounge, Space and Passthrough (the screen floats over your real room; needs a runtime that offers alpha-blend or additive passthrough). The default is set under *Settings → Video playback → VR cinema*.
 
 **3D movies:** side-by-side and top-bottom, half and full width. The format is read from the file's metadata, then from tags in the file name (`HSBS`, `FSBS`, `H-OU`, `FTAB`, ...). A title that just says "3D", or sits in a library whose name contains "3D", is shown as side-by-side; if that is wrong, press `A` to cycle through the modes.
